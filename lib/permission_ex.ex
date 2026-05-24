@@ -3,8 +3,8 @@ defmodule PermissionEx do
   Role and permission management for Ecto and Phoenix applications.
 
   `PermissionEx` keeps the core authorization model intentionally small:
-  users receive roles in a context, roles receive permissions, and
-  permissions are checked against the current scope.
+  users receive roles globally or inside an optional context, roles receive
+  permissions, and permissions are checked against the current scope.
   """
 
   import Ecto.Query

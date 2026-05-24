@@ -6,6 +6,10 @@ PermissionEx is intentionally close to Laravel Spatie Permission: permissions li
 in the database, roles collect permissions, users receive roles inside a
 context, and your app checks permissions from the current scope.
 
+Contexts are optional. In a regular app, assign roles globally without passing a
+context. In a SaaS app, pass your tenant, workspace, organization, project, or
+account id as the context.
+
 ## Status
 
 Early extraction. The public API is small on purpose while the Ecto model and
@@ -68,6 +72,13 @@ Assign a role to a user inside a context:
 {:ok, _user_role} = PermissionEx.assign_role(user.id, role, context.id)
 ```
 
+Assign a role globally in an app without tenants/workspaces:
+
+```elixir
+{:ok, role} = PermissionEx.upsert_role("admin")
+{:ok, _user_role} = PermissionEx.assign_role(user.id, role)
+```
+
 Create context-specific roles when you want each context to customize
 permissions independently:
 
@@ -92,6 +103,12 @@ Sync all roles for a user in a context:
 {:ok, _count} = PermissionEx.sync_roles(user.id, ["admin", "billing"], context.id)
 ```
 
+Sync global roles for a user:
+
+```elixir
+{:ok, _count} = PermissionEx.sync_roles(user.id, ["admin"])
+```
+
 Clone global role templates into a context:
 
 ```elixir
@@ -105,6 +122,12 @@ permission_scope = PermissionEx.Scope.for_user(user, context)
 
 %MyApp.Accounts.Scope{user: user, context: context}
 |> PermissionEx.Scope.put_permission_data(user, context)
+```
+
+For apps without contexts:
+
+```elixir
+permission_scope = PermissionEx.Scope.for_user(user)
 ```
 
 Check permissions:
