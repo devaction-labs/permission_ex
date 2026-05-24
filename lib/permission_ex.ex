@@ -121,29 +121,35 @@ defmodule PermissionEx do
   Replaces all permissions assigned to a role.
 
   Accepts a role struct, role id, or role name. Permissions can be names, ids,
-  atoms, or `%PermissionEx.Permission{}` structs.
+  atoms, or `%PermissionEx.Permission{}` structs. Missing permissions return
+  `{:error, {:permissions_not_found, missing}}` unless `allow_missing?: true`
+  is passed.
   """
   def sync_role_permissions(role_ref, permissions, opts \\ []) when is_list(permissions) do
     repo = repo(opts)
 
     with %Role{} = role <- get_role(role_ref, repo, Keyword.get(opts, :tenant_id)) do
-      permission_ids = resolve_permission_ids(permissions, repo)
+      case resolve_permission_ids(permissions, repo, opts) do
+        {:ok, permission_ids} ->
+          repo.transaction(fn ->
+            repo.delete_all(from(rp in RolePermission, where: rp.role_id == ^role.id))
 
-      repo.transaction(fn ->
-        repo.delete_all(from(rp in RolePermission, where: rp.role_id == ^role.id))
+            entries =
+              Enum.map(permission_ids, fn permission_id ->
+                %{role_id: role.id, permission_id: permission_id, inserted_at: now()}
+              end)
 
-        entries =
-          Enum.map(permission_ids, fn permission_id ->
-            %{role_id: role.id, permission_id: permission_id, inserted_at: now()}
+            insert_all_if_any(repo, RolePermission, entries,
+              on_conflict: :nothing,
+              conflict_target: [:role_id, :permission_id]
+            )
+
+            role
           end)
 
-        insert_all_if_any(repo, RolePermission, entries,
-          on_conflict: :nothing,
-          conflict_target: [:role_id, :permission_id]
-        )
-
-        role
-      end)
+        {:error, _reason} = error ->
+          error
+      end
     else
       nil -> {:error, :role_not_found}
     end
@@ -157,8 +163,8 @@ defmodule PermissionEx do
   def assign_role(user_id, role_or_id, tenant_id, opts \\ []) do
     repo = repo(opts)
 
-    case resolve_role_ids([role_or_id], tenant_id, repo) do
-      [role_id] ->
+    case resolve_role_ids([role_or_id], tenant_id, repo, opts) do
+      {:ok, [role_id]} ->
         %UserRole{}
         |> UserRole.changeset(%{user_id: user_id, role_id: role_id, tenant_id: tenant_id})
         |> repo.insert(
@@ -166,36 +172,41 @@ defmodule PermissionEx do
           conflict_target: [:user_id, :tenant_id, :role_id]
         )
 
-      [] ->
-        {:error, :role_not_found}
+      {:error, {:roles_not_found, _missing}} = error ->
+        error
     end
   end
 
   @doc "Assigns many roles to a user without removing existing roles."
   def assign_roles(user_id, roles, tenant_id, opts \\ []) when is_list(roles) do
     repo = repo(opts)
-    role_ids = resolve_role_ids(roles, tenant_id, repo)
 
-    entries =
-      Enum.map(role_ids, fn role_id ->
-        %{user_id: user_id, tenant_id: tenant_id, role_id: role_id, inserted_at: now()}
-      end)
+    case resolve_role_ids(roles, tenant_id, repo, opts) do
+      {:ok, role_ids} ->
+        entries =
+          Enum.map(role_ids, fn role_id ->
+            %{user_id: user_id, tenant_id: tenant_id, role_id: role_id, inserted_at: now()}
+          end)
 
-    {count, _} =
-      insert_all_if_any(repo, UserRole, entries,
-        on_conflict: :nothing,
-        conflict_target: [:user_id, :tenant_id, :role_id]
-      )
+        {count, _} =
+          insert_all_if_any(repo, UserRole, entries,
+            on_conflict: :nothing,
+            conflict_target: [:user_id, :tenant_id, :role_id]
+          )
 
-    {:ok, count}
+        {:ok, count}
+
+      {:error, {:roles_not_found, _missing}} = error ->
+        error
+    end
   end
 
   @doc "Removes one role from a user in a tenant/workspace."
   def revoke_role(user_id, role_or_id, tenant_id, opts \\ []) do
     repo = repo(opts)
 
-    case resolve_role_ids([role_or_id], tenant_id, repo) do
-      [role_id] ->
+    case resolve_role_ids([role_or_id], tenant_id, repo, opts) do
+      {:ok, [role_id]} ->
         {count, _} =
           repo.delete_all(
             from(ur in UserRole,
@@ -206,8 +217,8 @@ defmodule PermissionEx do
 
         {:ok, count}
 
-      [] ->
-        {:error, :role_not_found}
+      {:error, {:roles_not_found, _missing}} = error ->
+        error
     end
   end
 
@@ -219,26 +230,31 @@ defmodule PermissionEx do
   """
   def sync_user_roles(user_id, roles, tenant_id, opts \\ []) when is_list(roles) do
     repo = repo(opts)
-    role_ids = resolve_role_ids(roles, tenant_id, repo)
 
-    repo.transaction(fn ->
-      repo.delete_all(
-        from(ur in UserRole, where: ur.user_id == ^user_id and ur.tenant_id == ^tenant_id)
-      )
+    case resolve_role_ids(roles, tenant_id, repo, opts) do
+      {:ok, role_ids} ->
+        repo.transaction(fn ->
+          repo.delete_all(
+            from(ur in UserRole, where: ur.user_id == ^user_id and ur.tenant_id == ^tenant_id)
+          )
 
-      entries =
-        Enum.map(role_ids, fn role_id ->
-          %{user_id: user_id, tenant_id: tenant_id, role_id: role_id, inserted_at: now()}
+          entries =
+            Enum.map(role_ids, fn role_id ->
+              %{user_id: user_id, tenant_id: tenant_id, role_id: role_id, inserted_at: now()}
+            end)
+
+          {count, _} =
+            insert_all_if_any(repo, UserRole, entries,
+              on_conflict: :nothing,
+              conflict_target: [:user_id, :tenant_id, :role_id]
+            )
+
+          count
         end)
 
-      {count, _} =
-        insert_all_if_any(repo, UserRole, entries,
-          on_conflict: :nothing,
-          conflict_target: [:user_id, :tenant_id, :role_id]
-        )
-
-      count
-    end)
+      {:error, {:roles_not_found, _missing}} = error ->
+        error
+    end
   end
 
   @doc "Alias for `sync_user_roles/4`."
@@ -322,31 +338,39 @@ defmodule PermissionEx do
   defp get_role(%Role{} = role, _repo, _tenant_id), do: role
 
   defp get_role(role_ref, repo, tenant_id) when is_binary(role_ref) do
-    case resolve_role_ids([role_ref], tenant_id, repo) do
-      [role_id] -> repo.get(Role, role_id)
-      [] -> nil
+    case resolve_role_ids([role_ref], tenant_id, repo, []) do
+      {:ok, [role_id]} -> repo.get(Role, role_id)
+      {:error, _reason} -> nil
     end
   end
 
-  defp resolve_permission_ids(permissions, repo) do
+  defp resolve_permission_ids(permissions, repo, opts) do
     permissions
-    |> Enum.map(&permission_lookup_value/1)
-    |> resolve_lookup_values(Permission, repo)
+    |> Enum.map(&permission_lookup/1)
+    |> resolve_permission_lookups(repo, Keyword.get(opts, :allow_missing?, false))
   end
 
-  defp resolve_role_ids(roles, tenant_id, repo) do
+  defp resolve_role_ids(roles, tenant_id, repo, opts) do
     roles
-    |> Enum.map(&role_lookup_value/1)
-    |> resolve_lookup_values(Role, repo, tenant_id)
+    |> Enum.map(&role_lookup/1)
+    |> resolve_role_lookups(repo, tenant_id, Keyword.get(opts, :allow_missing?, false))
   end
 
-  defp permission_lookup_value(%Permission{id: id}), do: {:id, id}
-  defp permission_lookup_value(value) when is_atom(value), do: {:name, Atom.to_string(value)}
-  defp permission_lookup_value(value) when is_binary(value), do: lookup_value(value)
+  defp permission_lookup(%Permission{id: id}), do: {:id, id, id}
+  defp permission_lookup(value) when is_atom(value), do: {:name, Atom.to_string(value), value}
 
-  defp role_lookup_value(%Role{id: id}), do: {:id, id}
-  defp role_lookup_value(value) when is_atom(value), do: {:name, Atom.to_string(value)}
-  defp role_lookup_value(value) when is_binary(value), do: lookup_value(value)
+  defp permission_lookup(value) when is_binary(value) do
+    {kind, resolved} = lookup_value(value)
+    {kind, resolved, value}
+  end
+
+  defp role_lookup(%Role{id: id}), do: {:id, id, id}
+  defp role_lookup(value) when is_atom(value), do: {:name, Atom.to_string(value), value}
+
+  defp role_lookup(value) when is_binary(value) do
+    {kind, resolved} = lookup_value(value)
+    {kind, resolved, value}
+  end
 
   defp lookup_value(value) do
     case Ecto.UUID.cast(value) do
@@ -355,29 +379,78 @@ defmodule PermissionEx do
     end
   end
 
-  defp resolve_lookup_values(values, schema, repo, tenant_id \\ nil) do
-    ids = values |> Enum.filter(&match?({:id, _}, &1)) |> Enum.map(fn {:id, id} -> id end)
+  defp resolve_permission_lookups(lookups, repo, allow_missing?) do
+    {ids, missing} =
+      Enum.reduce(lookups, {[], []}, fn lookup, {ids, missing} ->
+        case find_permission_id(lookup, repo) do
+          nil -> {ids, [lookup_label(lookup) | missing]}
+          id -> {[id | ids], missing}
+        end
+      end)
 
-    names =
-      values |> Enum.filter(&match?({:name, _}, &1)) |> Enum.map(fn {:name, name} -> name end)
-
-    ids_from_names =
-      schema
-      |> where([s], s.name in ^names)
-      |> maybe_scope_roles(schema, tenant_id)
-      |> select([s], s.id)
-      |> repo.all()
-
-    Enum.uniq(ids ++ ids_from_names)
+    resolved_or_missing(ids, missing, :permissions_not_found, allow_missing?)
   end
 
-  defp maybe_scope_roles(query, Role, nil), do: where(query, [r], is_nil(r.tenant_id))
+  defp resolve_role_lookups(lookups, repo, tenant_id, allow_missing?) do
+    {ids, missing} =
+      Enum.reduce(lookups, {[], []}, fn lookup, {ids, missing} ->
+        case find_role_id(lookup, repo, tenant_id) do
+          nil -> {ids, [lookup_label(lookup) | missing]}
+          id -> {[id | ids], missing}
+        end
+      end)
 
-  defp maybe_scope_roles(query, Role, tenant_id) do
-    where(query, [r], is_nil(r.tenant_id) or r.tenant_id == ^tenant_id)
+    resolved_or_missing(ids, missing, :roles_not_found, allow_missing?)
   end
 
-  defp maybe_scope_roles(query, _schema, _tenant_id), do: query
+  defp find_permission_id({:id, id, _label}, repo) do
+    Permission
+    |> where([p], p.id == ^id)
+    |> select([p], p.id)
+    |> repo.one()
+  end
+
+  defp find_permission_id({:name, name, _label}, repo) do
+    Permission
+    |> where([p], p.name == ^name)
+    |> select([p], p.id)
+    |> repo.one()
+  end
+
+  defp find_role_id({:id, id, _label}, repo, _tenant_id) do
+    Role
+    |> where([r], r.id == ^id)
+    |> select([r], r.id)
+    |> repo.one()
+  end
+
+  defp find_role_id({:name, name, _label}, repo, nil) do
+    Role
+    |> where([r], r.name == ^name and is_nil(r.tenant_id))
+    |> select([r], r.id)
+    |> repo.one()
+  end
+
+  defp find_role_id({:name, name, _label}, repo, tenant_id) do
+    Role
+    |> where([r], r.name == ^name and (r.tenant_id == ^tenant_id or is_nil(r.tenant_id)))
+    |> order_by([r], asc: is_nil(r.tenant_id))
+    |> limit(1)
+    |> select([r], r.id)
+    |> repo.one()
+  end
+
+  defp resolved_or_missing(ids, [], _reason, _allow_missing?),
+    do: {:ok, ids |> Enum.reverse() |> Enum.uniq()}
+
+  defp resolved_or_missing(ids, _missing, _reason, true),
+    do: {:ok, ids |> Enum.reverse() |> Enum.uniq()}
+
+  defp resolved_or_missing(_ids, missing, reason, false) do
+    {:error, {reason, missing |> Enum.reverse() |> Enum.uniq()}}
+  end
+
+  defp lookup_label({_kind, _value, label}), do: label
 
   defp insert_all_if_any(_repo, _schema, [], _opts), do: {0, nil}
   defp insert_all_if_any(repo, schema, entries, opts), do: repo.insert_all(schema, entries, opts)
