@@ -4,7 +4,7 @@ defmodule PermitEx.MixProject do
   def project do
     [
       app: :permit_ex,
-      version: "0.1.0",
+      version: "0.2.0",
       elixir: "~> 1.19",
       elixirc_paths: elixirc_paths(Mix.env()),
       description: description(),
@@ -68,7 +68,7 @@ defmodule PermitEx.MixProject do
       groups_for_extras: [
         Guides: ~r/docs\/.*/
       ],
-      source_ref: "v0.1.0",
+      source_ref: "v0.2.0",
       source_url: "https://github.com/devaction-labs/permit_ex"
     ]
   end

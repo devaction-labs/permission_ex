@@ -27,8 +27,7 @@ defmodule PermitEx.Scope do
     user_id = id_from(user)
     context_id = id_from(context)
 
-    roles = PermitEx.roles_for(user_id, context_id, opts)
-    permissions = PermitEx.permissions_for(user_id, context_id, opts)
+    {roles, permissions} = PermitEx.scope_data_for(user_id, context_id, opts)
 
     %__MODULE__{
       user_id: user_id,

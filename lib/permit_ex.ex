@@ -409,6 +409,28 @@ defmodule PermitEx do
     |> MapSet.new()
   end
 
+  @doc "Loads roles and permissions for a user in a single query."
+  def scope_data_for(user_id, context_id \\ nil, opts \\ []) do
+    rows =
+      from(ur in UserRole,
+        join: r in Role,
+        on: r.id == ur.role_id,
+        left_join: rp in RolePermission,
+        on: rp.role_id == r.id,
+        left_join: p in Permission,
+        on: p.id == rp.permission_id,
+        where: ur.user_id == ^user_id,
+        select: {r, p.name}
+      )
+      |> scope_user_roles(context_id)
+      |> repo(opts).all()
+
+    roles = rows |> Enum.map(&elem(&1, 0)) |> Enum.uniq_by(& &1.id)
+    permissions = rows |> Enum.map(&elem(&1, 1)) |> Enum.reject(&is_nil/1) |> MapSet.new()
+
+    {roles, permissions}
+  end
+
   @doc """
   Clones global role templates into a context.
 
@@ -424,9 +446,11 @@ defmodule PermitEx do
     role_names = Keyword.get(opts, :roles)
 
     repo.transaction(fn ->
-      list_global_role_templates(repo, role_names)
-      |> Enum.map(fn role ->
-        permission_names = permission_names_for_role(role.id, repo)
+      roles = list_global_role_templates(repo, role_names)
+      permissions_by_role_id = batch_permission_names_for_roles(Enum.map(roles, & &1.id), repo)
+
+      Enum.map(roles, fn role ->
+        permission_names = Map.get(permissions_by_role_id, role.id, [])
 
         {:ok, context_role} =
           upsert_context_role(
@@ -561,11 +585,19 @@ defmodule PermitEx do
   end
 
   defp resolve_permission_lookups(lookups, repo, allow_missing?) do
+    {id_lookups, name_lookups} = Enum.split_with(lookups, &match?({:id, _, _}, &1))
+
+    found =
+      Map.merge(
+        batch_find_permissions_by_id(id_lookups, repo),
+        batch_find_permissions_by_name(name_lookups, repo)
+      )
+
     {ids, missing} =
-      Enum.reduce(lookups, {[], []}, fn lookup, {ids, missing} ->
-        case find_permission_id(lookup, repo) do
-          nil -> {ids, [lookup_label(lookup) | missing]}
-          id -> {[id | ids], missing}
+      Enum.reduce(lookups, {[], []}, fn {kind, value, label}, {ids, missing} ->
+        case Map.fetch(found, {kind, value}) do
+          {:ok, id} -> {[id | ids], missing}
+          :error -> {ids, [label | missing]}
         end
       end)
 
@@ -573,36 +605,105 @@ defmodule PermitEx do
   end
 
   defp resolve_role_lookups(lookups, repo, context_id, allow_missing?) do
+    {id_lookups, name_lookups} = Enum.split_with(lookups, &match?({:id, _, _}, &1))
+
+    found =
+      Map.merge(
+        batch_find_roles_by_id(id_lookups, repo),
+        batch_find_roles_by_name(name_lookups, repo, context_id)
+      )
+
     {ids, missing} =
-      Enum.reduce(lookups, {[], []}, fn lookup, {ids, missing} ->
-        case find_role_id(lookup, repo, context_id) do
-          nil -> {ids, [lookup_label(lookup) | missing]}
-          id -> {[id | ids], missing}
+      Enum.reduce(lookups, {[], []}, fn {kind, value, label}, {ids, missing} ->
+        case Map.fetch(found, {kind, value}) do
+          {:ok, id} -> {[id | ids], missing}
+          :error -> {ids, [label | missing]}
         end
       end)
 
     resolved_or_missing(ids, missing, :roles_not_found, allow_missing?)
   end
 
-  defp find_permission_id({:id, id, _label}, repo) do
+  defp batch_find_permissions_by_id([], _repo), do: %{}
+
+  defp batch_find_permissions_by_id(lookups, repo) do
+    ids = Enum.map(lookups, fn {:id, id, _} -> id end)
+
     Permission
-    |> where([p], p.id == ^id)
+    |> where([p], p.id in ^ids)
     |> select([p], p.id)
-    |> repo.one()
+    |> repo.all()
+    |> Map.new(&{{:id, &1}, &1})
   end
 
-  defp find_permission_id({:name, name, _label}, repo) do
+  defp batch_find_permissions_by_name([], _repo), do: %{}
+
+  defp batch_find_permissions_by_name(lookups, repo) do
+    names = Enum.map(lookups, fn {:name, name, _} -> name end)
+
     Permission
-    |> where([p], p.name == ^name)
-    |> select([p], p.id)
-    |> repo.one()
+    |> where([p], p.name in ^names)
+    |> select([p], {p.name, p.id})
+    |> repo.all()
+    |> Map.new(fn {name, id} -> {{:name, name}, id} end)
   end
 
-  defp find_role_id({:id, id, _label}, repo, _context_id) do
+  defp batch_find_roles_by_id([], _repo), do: %{}
+
+  defp batch_find_roles_by_id(lookups, repo) do
+    ids = Enum.map(lookups, fn {:id, id, _} -> id end)
+
     Role
-    |> where([r], r.id == ^id)
+    |> where([r], r.id in ^ids)
     |> select([r], r.id)
-    |> repo.one()
+    |> repo.all()
+    |> Map.new(&{{:id, &1}, &1})
+  end
+
+  defp batch_find_roles_by_name([], _repo, _context_id), do: %{}
+
+  defp batch_find_roles_by_name(lookups, repo, nil) do
+    names = Enum.map(lookups, fn {:name, name, _} -> name end)
+
+    Role
+    |> where([r], r.name in ^names and is_nil(r.context_id))
+    |> select([r], {r.name, r.id})
+    |> repo.all()
+    |> Map.new(fn {name, id} -> {{:name, name}, id} end)
+  end
+
+  defp batch_find_roles_by_name(lookups, repo, context_id) do
+    names = Enum.map(lookups, fn {:name, name, _} -> name end)
+
+    Role
+    |> where([r], r.name in ^names and (r.context_id == ^context_id or is_nil(r.context_id)))
+    |> select([r], {r.name, r.id, r.context_id})
+    |> repo.all()
+    |> Enum.group_by(&elem(&1, 0))
+    |> Map.new(fn {name, entries} ->
+      {_, id, _} =
+        Enum.min_by(entries, fn {_, _, ctx} ->
+          case ctx do
+            nil -> 1
+            _ -> 0
+          end
+        end)
+
+      {{:name, name}, id}
+    end)
+  end
+
+  defp batch_permission_names_for_roles([], _repo), do: %{}
+
+  defp batch_permission_names_for_roles(role_ids, repo) do
+    from(rp in RolePermission,
+      join: p in Permission,
+      on: p.id == rp.permission_id,
+      where: rp.role_id in ^role_ids,
+      select: {rp.role_id, p.name}
+    )
+    |> repo.all()
+    |> Enum.group_by(&elem(&1, 0), &elem(&1, 1))
   end
 
   defp find_role_id({:name, name, _label}, repo, nil) do
@@ -637,16 +738,6 @@ defmodule PermitEx do
     |> repo.all()
   end
 
-  defp permission_names_for_role(role_id, repo) do
-    from(rp in RolePermission,
-      join: p in Permission,
-      on: p.id == rp.permission_id,
-      where: rp.role_id == ^role_id,
-      select: p.name
-    )
-    |> repo.all()
-  end
-
   defp authorize_policy(_scope, _resource, nil), do: :ok
 
   defp authorize_policy(scope, resource, policy) when is_atom(policy) do
@@ -667,8 +758,6 @@ defmodule PermitEx do
   defp resolved_or_missing(_ids, missing, reason, false) do
     {:error, {reason, missing |> Enum.reverse() |> Enum.uniq()}}
   end
-
-  defp lookup_label({_kind, _value, label}), do: label
 
   defp insert_all_if_any(_repo, _schema, [], _opts), do: {0, nil}
   defp insert_all_if_any(repo, schema, entries, opts), do: repo.insert_all(schema, entries, opts)
