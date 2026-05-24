@@ -20,10 +20,9 @@ if Code.ensure_loaded?(Phoenix.LiveView) do
       assign_key = Keyword.get(opts, :assign_key, :current_scope)
       scope = socket.assigns[assign_key]
 
-      if PermitEx.Guard.authorized?(scope, opts) do
-        {:cont, socket}
-      else
-        {:halt, reject(socket, opts)}
+      case PermitEx.Guard.authorized?(scope, opts) do
+        true -> {:cont, socket}
+        false -> {:halt, reject(socket, opts)}
       end
     end
 

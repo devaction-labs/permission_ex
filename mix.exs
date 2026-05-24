@@ -32,6 +32,7 @@ defmodule PermitEx.MixProject do
       {:postgrex, ">= 0.0.0", only: :test},
       {:plug, "~> 1.18", optional: true},
       {:phoenix_live_view, "~> 1.0", optional: true},
+      {:absinthe, ">= 1.5.0", optional: true},
       {:ex_doc, "~> 0.38", only: :dev, runtime: false}
     ]
   end
@@ -60,6 +61,7 @@ defmodule PermitEx.MixProject do
         "LICENSE",
         "docs/phoenix.md",
         "docs/api.md",
+        "docs/absinthe.md",
         "docs/testing.md",
         "docs/use-nexus.md"
       ],

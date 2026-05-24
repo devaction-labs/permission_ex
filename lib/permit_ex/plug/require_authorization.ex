@@ -24,10 +24,9 @@ if Code.ensure_loaded?(Plug) do
       assign_key = Keyword.get(opts, :assign_key, :current_scope)
       scope = conn.assigns[assign_key]
 
-      if PermitEx.Guard.authorized?(scope, opts) do
-        conn
-      else
-        reject(conn, opts)
+      case PermitEx.Guard.authorized?(scope, opts) do
+        true -> conn
+        false -> reject(conn, opts)
       end
     end
 

@@ -56,7 +56,10 @@ defmodule PermitEx do
 
   @doc "Returns `:ok` or `{:error, :unauthorized}` for command-style flows."
   def authorize(scope_or_permissions, permission) do
-    if can?(scope_or_permissions, permission), do: :ok, else: {:error, :unauthorized}
+    case can?(scope_or_permissions, permission) do
+      true -> :ok
+      false -> {:error, :unauthorized}
+    end
   end
 
   @doc """
@@ -122,6 +125,32 @@ defmodule PermitEx do
   @doc "Lists permissions ordered by name."
   def list_permissions(opts \\ []) do
     repo(opts).all(from(p in Permission, order_by: p.name))
+  end
+
+  @doc """
+  Returns a map of role name to permission names for the given context.
+
+  Useful for rendering admin permission matrices and exposing role definitions
+  via API. Roles with no permissions appear with an empty list.
+
+      PermitEx.role_matrix()
+      #=> %{"admin" => ["orders:manage", "orders:view"], "viewer" => ["orders:view"]}
+
+      PermitEx.role_matrix(workspace.id)
+  """
+  def role_matrix(context_id \\ nil, opts \\ []) do
+    from(r in Role,
+      left_join: rp in RolePermission,
+      on: rp.role_id == r.id,
+      left_join: p in Permission,
+      on: p.id == rp.permission_id,
+      order_by: [asc: r.name, asc: p.name],
+      select: {r.name, p.name}
+    )
+    |> scope_roles(context_id)
+    |> repo(opts).all()
+    |> Enum.group_by(&elem(&1, 0), &elem(&1, 1))
+    |> Map.new(fn {role, perms} -> {role, Enum.reject(perms, &is_nil/1)} end)
   end
 
   @doc "Gets a permission by name."

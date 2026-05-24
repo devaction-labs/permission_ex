@@ -66,13 +66,9 @@ defmodule PermitExTest do
     test "combines RBAC and resource policy checks" do
       scope = %{user_id: "user-1", permissions: ["orders:manage"]}
 
-      assert PermitEx.allowed?(scope, "orders:manage", %{owner_id: "user-1"},
-               policy: OwnerPolicy
-             )
+      assert PermitEx.allowed?(scope, "orders:manage", %{owner_id: "user-1"}, policy: OwnerPolicy)
 
-      refute PermitEx.allowed?(scope, "orders:manage", %{owner_id: "user-2"},
-               policy: OwnerPolicy
-             )
+      refute PermitEx.allowed?(scope, "orders:manage", %{owner_id: "user-2"}, policy: OwnerPolicy)
     end
   end
 

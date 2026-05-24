@@ -20,14 +20,16 @@ defmodule Mix.Tasks.PermitEx.Install do
     filename = "#{timestamp}_create_permit_ex_tables.exs"
     target = Path.join(target_dir, filename)
 
-    if File.exists?(target) do
-      Mix.shell().info("Migration already exists: #{target}")
-    else
-      template = template_path()
-      module = "CreatePermitExTables"
-      contents = template |> File.read!() |> EEx.eval_string(module: module)
-      File.write!(target, contents)
-      Mix.shell().info("Created #{target}")
+    case File.exists?(target) do
+      true ->
+        Mix.shell().info("Migration already exists: #{target}")
+
+      false ->
+        template = template_path()
+        module = "CreatePermitExTables"
+        contents = template |> File.read!() |> EEx.eval_string(module: module)
+        File.write!(target, contents)
+        Mix.shell().info("Created #{target}")
     end
   end
 
