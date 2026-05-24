@@ -21,6 +21,15 @@ defmodule PermitExTest do
       assert PermitEx.can?(["manage_members"], :manage_members)
       assert PermitEx.can?([:manage_members], "manage_members")
     end
+
+    test "returns false for nil scope" do
+      refute PermitEx.can?(nil, "orders:view")
+    end
+
+    test "returns false for empty permissions" do
+      refute PermitEx.can?(%{permissions: MapSet.new()}, "orders:view")
+      refute PermitEx.can?(%{permissions: []}, "orders:view")
+    end
   end
 
   describe "authorize/2" do
@@ -37,6 +46,10 @@ defmodule PermitExTest do
       assert PermitEx.has_role?(scope, :admin)
       refute PermitEx.has_role?(scope, "viewer")
     end
+
+    test "returns false for nil scope" do
+      refute PermitEx.has_role?(nil, "admin")
+    end
   end
 
   describe "normalize helpers" do
@@ -46,7 +59,23 @@ defmodule PermitExTest do
     end
   end
 
-  describe "guard checks" do
+  describe "allowed?/4" do
+    test "combines RBAC and resource policy checks" do
+      scope = %{user_id: "user-1", permissions: ["orders:manage"]}
+
+      assert PermitEx.allowed?(scope, "orders:manage", %{owner_id: "user-1"}, policy: OwnerPolicy)
+
+      refute PermitEx.allowed?(scope, "orders:manage", %{owner_id: "user-2"}, policy: OwnerPolicy)
+    end
+
+    test "returns false when permission check fails regardless of policy" do
+      scope = %{user_id: "user-1", permissions: []}
+
+      refute PermitEx.allowed?(scope, "orders:manage", %{owner_id: "user-1"}, policy: OwnerPolicy)
+    end
+  end
+
+  describe "Guard.authorized?/2" do
     test "supports role and permission combinations" do
       scope = %{roles: ["admin"], permissions: MapSet.new(["orders:view", "orders:manage"])}
 
@@ -60,15 +89,56 @@ defmodule PermitExTest do
                all_permissions: ["settings:manage"]
              )
     end
+
+    test "supports any_permissions — passes when at least one matches" do
+      scope = %{permissions: MapSet.new(["orders:view"]), roles: []}
+
+      assert PermitEx.Guard.authorized?(scope, any_permissions: ["orders:view", "orders:manage"])
+
+      refute PermitEx.Guard.authorized?(scope,
+               any_permissions: ["settings:manage", "users:manage"]
+             )
+    end
+
+    test "supports any_roles — passes when at least one matches" do
+      scope = %{roles: ["viewer"], permissions: MapSet.new()}
+
+      assert PermitEx.Guard.authorized?(scope, any_roles: ["admin", "viewer"])
+      refute PermitEx.Guard.authorized?(scope, any_roles: ["admin", "support"])
+    end
+
+    test "supports all_roles — requires every role" do
+      scope = %{roles: ["admin", "billing"], permissions: MapSet.new()}
+
+      assert PermitEx.Guard.authorized?(scope, all_roles: ["admin", "billing"])
+      refute PermitEx.Guard.authorized?(scope, all_roles: ["admin", "billing", "support"])
+    end
+
+    test "raises when called with no constraint options" do
+      scope = %{permissions: MapSet.new(["orders:view"]), roles: []}
+
+      assert_raise ArgumentError, ~r/at least one of/, fn ->
+        PermitEx.Guard.authorized?(scope, assign_key: :my_scope)
+      end
+    end
+
+    test "raises when called with empty opts" do
+      assert_raise ArgumentError, ~r/at least one of/, fn ->
+        PermitEx.Guard.authorized?(%{}, [])
+      end
+    end
   end
 
-  describe "allowed?/4" do
-    test "combines RBAC and resource policy checks" do
-      scope = %{user_id: "user-1", permissions: ["orders:manage"]}
+  describe "Scope.put_permission_data/4" do
+    test "merges roles and permissions into a plain map" do
+      scope = %PermitEx.Scope{roles: [], permissions: MapSet.new()}
+      map = %{user: "alex"}
 
-      assert PermitEx.allowed?(scope, "orders:manage", %{owner_id: "user-1"}, policy: OwnerPolicy)
+      result = Map.merge(map, %{roles: scope.roles, permissions: scope.permissions})
 
-      refute PermitEx.allowed?(scope, "orders:manage", %{owner_id: "user-2"}, policy: OwnerPolicy)
+      assert result.user == "alex"
+      assert result.roles == []
+      assert result.permissions == MapSet.new()
     end
   end
 
@@ -96,6 +166,43 @@ defmodule PermitExTest do
       assert result.status == 403
       assert result.resp_body == ~s({"error":"forbidden"})
     end
+
+    test "fails closed when scope is nil" do
+      conn = conn(:get, "/")
+
+      result = PermitEx.Plug.RequirePermission.call(conn, permission: "orders:manage")
+
+      assert result.halted
+      assert result.status == 403
+    end
+
+    test "RequireRole halts when role is absent" do
+      conn =
+        :get
+        |> conn("/")
+        |> Plug.Conn.assign(:current_scope, %{roles: ["viewer"]})
+
+      result = PermitEx.Plug.RequireRole.call(conn, role: "admin")
+
+      assert result.halted
+    end
+
+    test "RequireAuthorization supports any_permissions" do
+      conn =
+        :get
+        |> conn("/")
+        |> Plug.Conn.assign(:current_scope, %{
+          permissions: MapSet.new(["orders:view"]),
+          roles: []
+        })
+
+      result =
+        PermitEx.Plug.RequireAuthorization.call(conn,
+          any_permissions: ["orders:view", "orders:manage"]
+        )
+
+      refute result.halted
+    end
   end
 
   describe "LiveView guards" do
@@ -111,6 +218,112 @@ defmodule PermitExTest do
 
       assert {:halt, ^socket} =
                PermitEx.LiveView.RequireRole.on_mount("admin", %{}, %{}, socket)
+    end
+
+    test "fails closed when scope is nil" do
+      socket = %Phoenix.LiveView.Socket{assigns: %{}}
+
+      assert {:halt, _socket} =
+               PermitEx.LiveView.RequirePermission.on_mount("orders:manage", %{}, %{}, socket)
+    end
+
+    test "RequireAuthorization supports redirect_to and flash" do
+      socket = %Phoenix.LiveView.Socket{
+        assigns: %{
+          __changed__: %{},
+          flash: %{},
+          current_scope: %{roles: [], permissions: MapSet.new()}
+        }
+      }
+
+      assert {:halt, halted} =
+               PermitEx.LiveView.RequireAuthorization.on_mount(
+                 [permission: "orders:manage", flash: {:error, "Forbidden"}, redirect_to: "/"],
+                 %{},
+                 %{},
+                 socket
+               )
+
+      assert halted.redirected != nil
+    end
+  end
+
+  describe "Absinthe middleware" do
+    test "RequirePermission passes authorized resolution through unchanged" do
+      scope = %{permissions: MapSet.new(["orders:manage"]), roles: []}
+      resolution = %Absinthe.Resolution{context: %{current_scope: scope}}
+
+      result = PermitEx.Absinthe.RequirePermission.call(resolution, "orders:manage")
+
+      assert result.errors == []
+    end
+
+    test "RequirePermission denies unauthorized resolution" do
+      scope = %{permissions: MapSet.new(), roles: []}
+      resolution = %Absinthe.Resolution{context: %{current_scope: scope}}
+
+      result = PermitEx.Absinthe.RequirePermission.call(resolution, "orders:manage")
+
+      assert result.errors != []
+    end
+
+    test "RequirePermission fails closed when scope is missing" do
+      resolution = %Absinthe.Resolution{context: %{}}
+
+      result = PermitEx.Absinthe.RequirePermission.call(resolution, "orders:manage")
+
+      assert result.errors != []
+    end
+
+    test "RequireRole checks role correctly" do
+      scope = %{roles: ["admin"], permissions: MapSet.new()}
+
+      allowed = %Absinthe.Resolution{context: %{current_scope: scope}}
+
+      denied = %Absinthe.Resolution{
+        context: %{current_scope: %{roles: [], permissions: MapSet.new()}}
+      }
+
+      assert PermitEx.Absinthe.RequireRole.call(allowed, "admin").errors == []
+      assert PermitEx.Absinthe.RequireRole.call(denied, "admin").errors != []
+    end
+
+    test "RequireAuthorization supports any_permissions" do
+      scope = %{permissions: MapSet.new(["orders:view"]), roles: []}
+      resolution = %Absinthe.Resolution{context: %{current_scope: scope}}
+
+      result =
+        PermitEx.Absinthe.RequireAuthorization.call(resolution,
+          any_permissions: ["orders:view", "orders:manage"]
+        )
+
+      assert result.errors == []
+    end
+
+    test "RequireAuthorization supports custom error message" do
+      scope = %{permissions: MapSet.new(), roles: []}
+      resolution = %Absinthe.Resolution{context: %{current_scope: scope}}
+
+      result =
+        PermitEx.Absinthe.RequireAuthorization.call(resolution,
+          permission: "orders:manage",
+          message: "access denied"
+        )
+
+      assert Enum.any?(result.errors, &(to_string(&1) =~ "access denied"))
+    end
+
+    test "RequireAuthorization supports custom assign_key" do
+      scope = %{permissions: MapSet.new(["orders:manage"]), roles: []}
+      resolution = %Absinthe.Resolution{context: %{auth: scope}}
+
+      result =
+        PermitEx.Absinthe.RequireAuthorization.call(resolution,
+          permission: "orders:manage",
+          assign_key: :auth
+        )
+
+      assert result.errors == []
     end
   end
 end

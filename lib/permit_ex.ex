@@ -5,6 +5,22 @@ defmodule PermitEx do
   `PermitEx` keeps the core authorization model intentionally small:
   users receive roles globally or inside an optional context, roles receive
   permissions, and permissions are checked against the current scope.
+
+  ## Atom safety
+
+  Permission and role identifiers can be passed as atoms for convenience
+  (`can?(scope, :orders_manage)`), but atoms must always be **compile-time
+  literals**. Never derive them from user input via `String.to_atom/1` — the
+  atom table is not garbage-collected and exhausting it crashes the VM. Use
+  strings for any value that originates from user input or external data.
+
+  ## Policy contract
+
+  `allowed?/4` accepts an optional `:policy` module implementing
+  `PermitEx.Policy`. The policy callback must return a boolean or
+  `{:error, reason}`. Unexpected return values or raised exceptions propagate
+  to the caller — wrap your policy in a `try/rescue` if you need guaranteed
+  fail-closed semantics on errors.
   """
 
   import Ecto.Query
@@ -105,7 +121,8 @@ defmodule PermitEx do
     repo(opts).insert(
       Role.changeset(%Role{}, attrs),
       on_conflict: {:replace, [:description, :locked, :updated_at]},
-      conflict_target: {:unsafe_fragment, "(name) WHERE context_id IS NULL"}
+      conflict_target: {:unsafe_fragment, "(name) WHERE context_id IS NULL"},
+      returning: [:id]
     )
   end
 
@@ -118,7 +135,8 @@ defmodule PermitEx do
     repo(opts).insert(
       Role.changeset(%Role{}, attrs),
       on_conflict: {:replace, [:description, :locked, :updated_at]},
-      conflict_target: {:unsafe_fragment, "(context_id, name) WHERE context_id IS NOT NULL"}
+      conflict_target: {:unsafe_fragment, "(context_id, name) WHERE context_id IS NOT NULL"},
+      returning: [:id]
     )
   end
 
@@ -163,12 +181,12 @@ defmodule PermitEx do
     repo(opts).delete(permission)
   end
 
-  @doc "Lists global roles and roles for the given context."
+  @doc "Lists global roles and roles for the given context, with permissions preloaded."
   def list_roles(context_id \\ nil, opts \\ []) do
     Role
     |> scope_roles(context_id)
     |> order_by([r], asc: r.name)
-    |> preload([:role_permissions])
+    |> preload([:permissions])
     |> repo(opts).all()
   end
 

@@ -15,16 +15,33 @@ defmodule PermitEx.Guard do
   - `:any_roles` - at least one role must match
   - `:all_roles` - every role must match
   """
-  def authorized?(scope, opts) when is_list(opts) do
-    permissions = all_values(opts, :permission, :all_permissions)
-    any_permissions = List.wrap(Keyword.get(opts, :any_permissions, []))
-    roles = all_values(opts, :role, :all_roles)
-    any_roles = List.wrap(Keyword.get(opts, :any_roles, []))
+  @constraint_keys [
+    :permission,
+    :role,
+    :any_permissions,
+    :all_permissions,
+    :any_roles,
+    :all_roles
+  ]
 
-    all_permissions?(scope, permissions) and
-      any_permissions?(scope, any_permissions) and
-      all_roles?(scope, roles) and
-      any_roles?(scope, any_roles)
+  def authorized?(scope, opts) when is_list(opts) do
+    case Keyword.take(opts, @constraint_keys) do
+      [] ->
+        raise ArgumentError,
+              "PermitEx.Guard.authorized?/2 requires at least one of: " <>
+                ":permission, :role, :any_permissions, :all_permissions, :any_roles, :all_roles"
+
+      _ ->
+        permissions = all_values(opts, :permission, :all_permissions)
+        any_permissions = List.wrap(Keyword.get(opts, :any_permissions, []))
+        roles = all_values(opts, :role, :all_roles)
+        any_roles = List.wrap(Keyword.get(opts, :any_roles, []))
+
+        all_permissions?(scope, permissions) and
+          any_permissions?(scope, any_permissions) and
+          all_roles?(scope, roles) and
+          any_roles?(scope, any_roles)
+    end
   end
 
   def authorized?(scope, permission) when is_binary(permission) or is_atom(permission) do
