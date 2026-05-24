@@ -1,4 +1,4 @@
-defmodule PermissionEx.Permission do
+defmodule PermitEx.Permission do
   @moduledoc """
   Ecto schema for permission names.
 
@@ -14,11 +14,11 @@ defmodule PermissionEx.Permission do
   @foreign_key_type Ecto.UUID
   @timestamps_opts [type: :utc_datetime_usec]
 
-  schema "permission_ex_permissions" do
+  schema "permit_ex_permissions" do
     field(:name, :string)
     field(:description, :string)
 
-    has_many(:role_permissions, PermissionEx.RolePermission)
+    has_many(:role_permissions, PermitEx.RolePermission)
 
     timestamps()
   end

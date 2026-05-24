@@ -1,14 +1,14 @@
 if Code.ensure_loaded?(Phoenix.LiveView) do
-  defmodule PermissionEx.LiveView.RequirePermission do
+  defmodule PermitEx.LiveView.RequirePermission do
     @moduledoc """
     LiveView `on_mount` shortcut for requiring one permission.
 
-        on_mount {PermissionEx.LiveView.RequirePermission, "orders:view"}
+        on_mount {PermitEx.LiveView.RequirePermission, "orders:view"}
     """
 
     def on_mount(permission, params, session, socket)
         when is_binary(permission) or is_atom(permission) do
-      PermissionEx.LiveView.RequireAuthorization.on_mount(
+      PermitEx.LiveView.RequireAuthorization.on_mount(
         [permission: permission],
         params,
         session,
@@ -17,7 +17,7 @@ if Code.ensure_loaded?(Phoenix.LiveView) do
     end
 
     def on_mount(opts, params, session, socket) when is_list(opts) do
-      PermissionEx.LiveView.RequireAuthorization.on_mount(opts, params, session, socket)
+      PermitEx.LiveView.RequireAuthorization.on_mount(opts, params, session, socket)
     end
   end
 end

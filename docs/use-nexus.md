@@ -1,6 +1,6 @@
 # use_nexus Migration Notes
 
-These notes map the current `use_nexus` authorization model to PermissionEx.
+These notes map the current `use_nexus` authorization model to PermitEx.
 
 `use_nexus` already has the right concepts:
 
@@ -11,15 +11,15 @@ These notes map the current `use_nexus` authorization model to PermissionEx.
 - tenant-scoped role catalogs
 - `current_scope`
 
-PermissionEx should replace the shared RBAC mechanics, not the app-specific
+PermitEx should replace the shared RBAC mechanics, not the app-specific
 business rules.
 
 ## Suggested Mapping
 
-| use_nexus concept | PermissionEx concept |
+| use_nexus concept | PermitEx concept |
 | --- | --- |
-| `UseNexus.Authorization` | `PermissionEx` |
-| `UseNexus.Accounts.Scope.permissions` | `PermissionEx.Scope.permissions` |
+| `UseNexus.Authorization` | `PermitEx` |
+| `UseNexus.Accounts.Scope.permissions` | `PermitEx.Scope.permissions` |
 | `tenant_id` | `context_id` |
 | tenant role catalog | context roles cloned from global templates |
 | `"settings:manage"` | `"settings:manage"` |
@@ -27,20 +27,20 @@ business rules.
 ## Migration Strategy
 
 1. Keep the existing tables in place.
-2. Install PermissionEx migrations.
-3. Seed PermissionEx with the same permission names used by `use_nexus`.
+2. Install PermitEx migrations.
+3. Seed PermitEx with the same permission names used by `use_nexus`.
 4. Clone global role templates into each tenant context.
 5. Migrate user role assignments tenant by tenant.
-6. Update `UseNexus.Accounts.Scope` to load PermissionEx roles and permissions.
+6. Update `UseNexus.Accounts.Scope` to load PermitEx roles and permissions.
 7. Replace direct calls to `UseNexus.Authorization.has_permission?/2` with
-   `PermissionEx.can?/2`.
+   `PermitEx.can?/2`.
 8. Replace route guards incrementally.
 9. Remove old RBAC tables only after production verification.
 
 ## Example Seed
 
 ```elixir
-PermissionEx.seed!(
+PermitEx.seed!(
   permissions: [
     {"admin:view", "Access to the admin area"},
     {"tenants:view", "See tenants"},
@@ -66,7 +66,7 @@ PermissionEx.seed!(
 
 ```elixir
 def for_user(user, tenant) do
-  permission_scope = PermissionEx.Scope.for_user(user, tenant)
+  permission_scope = PermitEx.Scope.for_user(user, tenant)
 
   %UseNexus.Accounts.Scope{
     user: user,
@@ -82,18 +82,18 @@ end
 For Phoenix controllers:
 
 ```elixir
-plug PermissionEx.Plug.RequirePermission, "settings:manage"
+plug PermitEx.Plug.RequirePermission, "settings:manage"
 ```
 
 For LiveView:
 
 ```elixir
-{PermissionEx.LiveView.RequirePermission, "settings:manage"}
+{PermitEx.LiveView.RequirePermission, "settings:manage"}
 ```
 
 ## Important Caution
 
 Do not delete the existing `use_nexus` authorization code until the new
-PermissionEx-backed scope has been verified in development and staging. The app
+PermitEx-backed scope has been verified in development and staging. The app
 currently mixes user type checks with permission checks, so migration should be
 incremental.

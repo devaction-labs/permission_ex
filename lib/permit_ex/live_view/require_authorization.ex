@@ -1,11 +1,11 @@
 if Code.ensure_loaded?(Phoenix.LiveView) do
-  defmodule PermissionEx.LiveView.RequireAuthorization do
+  defmodule PermitEx.LiveView.RequireAuthorization do
     @moduledoc """
-    LiveView `on_mount` hook for enforcing PermissionEx roles and permissions.
+    LiveView `on_mount` hook for enforcing PermitEx roles and permissions.
 
         live_session :app,
           on_mount: [
-            {PermissionEx.LiveView.RequireAuthorization, permission: "orders:view"}
+            {PermitEx.LiveView.RequireAuthorization, permission: "orders:view"}
           ]
 
     Options:
@@ -20,7 +20,7 @@ if Code.ensure_loaded?(Phoenix.LiveView) do
       assign_key = Keyword.get(opts, :assign_key, :current_scope)
       scope = socket.assigns[assign_key]
 
-      if PermissionEx.Guard.authorized?(scope, opts) do
+      if PermitEx.Guard.authorized?(scope, opts) do
         {:cont, socket}
       else
         {:halt, reject(socket, opts)}

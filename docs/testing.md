@@ -1,6 +1,6 @@
 # Testing
 
-PermissionEx runs integration tests against PostgreSQL because the migrations
+PermitEx runs integration tests against PostgreSQL because the migrations
 use PostgreSQL partial indexes for global and context-specific assignments.
 
 ## Local PostgreSQL Container
@@ -14,7 +14,7 @@ docker compose up -d postgres
 Run the test suite:
 
 ```bash
-DATABASE_URL=postgres://postgres:postgres@localhost:55432/permission_ex_test mix test
+DATABASE_URL=postgres://postgres:postgres@localhost:55432/permit_ex_test mix test
 ```
 
 Stop the container:

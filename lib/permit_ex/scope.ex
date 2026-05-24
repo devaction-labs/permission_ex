@@ -1,12 +1,12 @@
-defmodule PermissionEx.Scope do
+defmodule PermitEx.Scope do
   @moduledoc """
-  Authorization scope loaded from PermissionEx role assignments.
+  Authorization scope loaded from PermitEx role assignments.
 
   Use this struct directly or merge its `roles` and `permissions` into your
   application's own Phoenix scope.
   """
 
-  alias PermissionEx.Role
+  alias PermitEx.Role
 
   defstruct user_id: nil, context_id: nil, roles: [], permissions: MapSet.new(), assigns: %{}
 
@@ -19,7 +19,7 @@ defmodule PermissionEx.Scope do
         }
 
   @doc """
-  Builds a `%PermissionEx.Scope{}` for the user and optional context.
+  Builds a `%PermitEx.Scope{}` for the user and optional context.
 
   Accepts ids, structs with an `:id` field, or maps with an `"id"` key.
   """
@@ -27,8 +27,8 @@ defmodule PermissionEx.Scope do
     user_id = id_from(user)
     context_id = id_from(context)
 
-    roles = PermissionEx.roles_for(user_id, context_id, opts)
-    permissions = PermissionEx.permissions_for(user_id, context_id, opts)
+    roles = PermitEx.roles_for(user_id, context_id, opts)
+    permissions = PermitEx.permissions_for(user_id, context_id, opts)
 
     %__MODULE__{
       user_id: user_id,
@@ -39,7 +39,7 @@ defmodule PermissionEx.Scope do
   end
 
   @doc """
-  Merges PermissionEx authorization data into an existing map or struct.
+  Merges PermitEx authorization data into an existing map or struct.
   """
   def put_permission_data(scope, user, context \\ nil, opts \\ []) do
     permission_scope = for_user(user, context, opts)

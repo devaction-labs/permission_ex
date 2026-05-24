@@ -1,11 +1,11 @@
 if Code.ensure_loaded?(Plug) do
-  defmodule PermissionEx.Plug.RequireAuthorization do
+  defmodule PermitEx.Plug.RequireAuthorization do
     @moduledoc """
-    Plug for enforcing PermissionEx roles and permissions in controllers or APIs.
+    Plug for enforcing PermitEx roles and permissions in controllers or APIs.
 
-        plug PermissionEx.Plug.RequireAuthorization, permission: "orders:manage"
-        plug PermissionEx.Plug.RequireAuthorization, role: "admin"
-        plug PermissionEx.Plug.RequireAuthorization,
+        plug PermitEx.Plug.RequireAuthorization, permission: "orders:manage"
+        plug PermitEx.Plug.RequireAuthorization, role: "admin"
+        plug PermitEx.Plug.RequireAuthorization,
           any_permissions: ["orders:manage", "settings:manage"]
     """
 
@@ -24,7 +24,7 @@ if Code.ensure_loaded?(Plug) do
       assign_key = Keyword.get(opts, :assign_key, :current_scope)
       scope = conn.assigns[assign_key]
 
-      if PermissionEx.Guard.authorized?(scope, opts) do
+      if PermitEx.Guard.authorized?(scope, opts) do
         conn
       else
         reject(conn, opts)

@@ -1,4 +1,4 @@
-defmodule PermissionEx.Application do
+defmodule PermitEx.Application do
   # See https://hexdocs.pm/elixir/Application.html
   # for more information on OTP Applications
   @moduledoc false
@@ -8,13 +8,13 @@ defmodule PermissionEx.Application do
   @impl true
   def start(_type, _args) do
     children = [
-      # Starts a worker by calling: PermissionEx.Worker.start_link(arg)
-      # {PermissionEx.Worker, arg}
+      # Starts a worker by calling: PermitEx.Worker.start_link(arg)
+      # {PermitEx.Worker, arg}
     ]
 
     # See https://hexdocs.pm/elixir/Supervisor.html
     # for other strategies and supported options
-    opts = [strategy: :one_for_one, name: PermissionEx.Supervisor]
+    opts = [strategy: :one_for_one, name: PermitEx.Supervisor]
     Supervisor.start_link(children, opts)
   end
 end

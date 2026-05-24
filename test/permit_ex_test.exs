@@ -1,10 +1,10 @@
-defmodule PermissionExTest do
+defmodule PermitExTest do
   use ExUnit.Case, async: true
 
   import Plug.Test
 
   defmodule OwnerPolicy do
-    @behaviour PermissionEx.Policy
+    @behaviour PermitEx.Policy
 
     def authorize(scope, resource, _opts), do: scope.user_id == resource.owner_id
   end
@@ -13,20 +13,20 @@ defmodule PermissionExTest do
     test "checks map scopes with MapSet permissions" do
       scope = %{permissions: MapSet.new(["orders:view", "orders:manage"])}
 
-      assert PermissionEx.can?(scope, "orders:view")
-      refute PermissionEx.can?(scope, "settings:manage")
+      assert PermitEx.can?(scope, "orders:view")
+      refute PermitEx.can?(scope, "settings:manage")
     end
 
     test "checks list permissions and normalizes atoms" do
-      assert PermissionEx.can?(["manage_members"], :manage_members)
-      assert PermissionEx.can?([:manage_members], "manage_members")
+      assert PermitEx.can?(["manage_members"], :manage_members)
+      assert PermitEx.can?([:manage_members], "manage_members")
     end
   end
 
   describe "authorize/2" do
     test "returns tagged authorization results" do
-      assert PermissionEx.authorize(["orders:view"], "orders:view") == :ok
-      assert PermissionEx.authorize([], "orders:view") == {:error, :unauthorized}
+      assert PermitEx.authorize(["orders:view"], "orders:view") == :ok
+      assert PermitEx.authorize([], "orders:view") == {:error, :unauthorized}
     end
   end
 
@@ -34,15 +34,15 @@ defmodule PermissionExTest do
     test "checks scopes with role names" do
       scope = %{roles: ["admin", "billing"]}
 
-      assert PermissionEx.has_role?(scope, :admin)
-      refute PermissionEx.has_role?(scope, "viewer")
+      assert PermitEx.has_role?(scope, :admin)
+      refute PermitEx.has_role?(scope, "viewer")
     end
   end
 
   describe "normalize helpers" do
     test "normalizes permission and role inputs" do
-      assert PermissionEx.normalize_permission(:orders_manage) == "orders_manage"
-      assert PermissionEx.normalize_role(:admin) == "admin"
+      assert PermitEx.normalize_permission(:orders_manage) == "orders_manage"
+      assert PermitEx.normalize_role(:admin) == "admin"
     end
   end
 
@@ -50,12 +50,12 @@ defmodule PermissionExTest do
     test "supports role and permission combinations" do
       scope = %{roles: ["admin"], permissions: MapSet.new(["orders:view", "orders:manage"])}
 
-      assert PermissionEx.Guard.authorized?(scope,
+      assert PermitEx.Guard.authorized?(scope,
                role: "admin",
                all_permissions: ["orders:view", "orders:manage"]
              )
 
-      refute PermissionEx.Guard.authorized?(scope,
+      refute PermitEx.Guard.authorized?(scope,
                role: "admin",
                all_permissions: ["settings:manage"]
              )
@@ -66,11 +66,11 @@ defmodule PermissionExTest do
     test "combines RBAC and resource policy checks" do
       scope = %{user_id: "user-1", permissions: ["orders:manage"]}
 
-      assert PermissionEx.allowed?(scope, "orders:manage", %{owner_id: "user-1"},
+      assert PermitEx.allowed?(scope, "orders:manage", %{owner_id: "user-1"},
                policy: OwnerPolicy
              )
 
-      refute PermissionEx.allowed?(scope, "orders:manage", %{owner_id: "user-2"},
+      refute PermitEx.allowed?(scope, "orders:manage", %{owner_id: "user-2"},
                policy: OwnerPolicy
              )
     end
@@ -83,7 +83,7 @@ defmodule PermissionExTest do
         |> conn("/")
         |> Plug.Conn.assign(:current_scope, %{permissions: ["orders:manage"]})
 
-      result = PermissionEx.Plug.RequirePermission.call(conn, permission: "orders:manage")
+      result = PermitEx.Plug.RequirePermission.call(conn, permission: "orders:manage")
 
       refute result.halted
     end
@@ -94,7 +94,7 @@ defmodule PermissionExTest do
         |> conn("/")
         |> Plug.Conn.assign(:current_scope, %{permissions: []})
 
-      result = PermissionEx.Plug.RequirePermission.call(conn, permission: "orders:manage")
+      result = PermitEx.Plug.RequirePermission.call(conn, permission: "orders:manage")
 
       assert result.halted
       assert result.status == 403
@@ -107,14 +107,14 @@ defmodule PermissionExTest do
       socket = %Phoenix.LiveView.Socket{assigns: %{current_scope: %{roles: ["admin"]}}}
 
       assert {:cont, ^socket} =
-               PermissionEx.LiveView.RequireRole.on_mount("admin", %{}, %{}, socket)
+               PermitEx.LiveView.RequireRole.on_mount("admin", %{}, %{}, socket)
     end
 
     test "halts unauthorized sockets" do
       socket = %Phoenix.LiveView.Socket{assigns: %{current_scope: %{roles: []}}}
 
       assert {:halt, ^socket} =
-               PermissionEx.LiveView.RequireRole.on_mount("admin", %{}, %{}, socket)
+               PermitEx.LiveView.RequireRole.on_mount("admin", %{}, %{}, socket)
     end
   end
 end

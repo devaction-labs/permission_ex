@@ -1,5 +1,5 @@
-defmodule PermissionEx.TestRepo do
+defmodule PermitEx.TestRepo do
   use Ecto.Repo,
-    otp_app: :permission_ex,
+    otp_app: :permit_ex,
     adapter: Ecto.Adapters.Postgres
 end

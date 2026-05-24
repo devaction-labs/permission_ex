@@ -1,9 +1,9 @@
 if Code.ensure_loaded?(Plug) do
-  defmodule PermissionEx.Plug.RequireRole do
+  defmodule PermitEx.Plug.RequireRole do
     @moduledoc """
     Plug shortcut for requiring one role.
 
-        plug PermissionEx.Plug.RequireRole, "admin"
+        plug PermitEx.Plug.RequireRole, "admin"
     """
 
     @behaviour Plug
@@ -13,6 +13,6 @@ if Code.ensure_loaded?(Plug) do
     def init(opts) when is_list(opts), do: opts
 
     @impl Plug
-    def call(conn, opts), do: PermissionEx.Plug.RequireAuthorization.call(conn, opts)
+    def call(conn, opts), do: PermitEx.Plug.RequireAuthorization.call(conn, opts)
   end
 end

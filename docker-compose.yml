@@ -4,6 +4,6 @@ services:
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: permission_ex_test
+      POSTGRES_DB: permit_ex_test
     ports:
       - "55432:5432"

@@ -1,14 +1,14 @@
-defmodule PermissionEx.Config do
+defmodule PermitEx.Config do
   @moduledoc false
 
-  @app :permission_ex
+  @app :permit_ex
 
   def repo do
     Application.get_env(@app, :repo)
   end
 
   def repo! do
-    repo() || raise ArgumentError, "configure :permission_ex, repo: MyApp.Repo"
+    repo() || raise ArgumentError, "configure :permit_ex, repo: MyApp.Repo"
   end
 
   def context_key do

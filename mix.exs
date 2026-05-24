@@ -1,16 +1,16 @@
-defmodule PermissionEx.MixProject do
+defmodule PermitEx.MixProject do
   use Mix.Project
 
   def project do
     [
-      app: :permission_ex,
+      app: :permit_ex,
       version: "0.1.0",
       elixir: "~> 1.19",
       elixirc_paths: elixirc_paths(Mix.env()),
       description: description(),
       package: package(),
-      source_url: "https://github.com/devaction-labs/permission_ex",
-      homepage_url: "https://github.com/devaction-labs/permission_ex",
+      source_url: "https://github.com/devaction-labs/permit_ex",
+      homepage_url: "https://github.com/devaction-labs/permit_ex",
       docs: docs(),
       start_permanent: Mix.env() == :prod,
       deps: deps()
@@ -21,7 +21,7 @@ defmodule PermissionEx.MixProject do
   def application do
     [
       extra_applications: [:logger],
-      mod: {PermissionEx.Application, []}
+      mod: {PermitEx.Application, []}
     ]
   end
 
@@ -47,7 +47,7 @@ defmodule PermissionEx.MixProject do
     [
       licenses: ["MIT"],
       files: ~w(lib priv .formatter.exs mix.exs README.md LICENSE CHANGELOG.md docs),
-      links: %{"GitHub" => "https://github.com/devaction-labs/permission_ex"}
+      links: %{"GitHub" => "https://github.com/devaction-labs/permit_ex"}
     ]
   end
 
@@ -67,7 +67,7 @@ defmodule PermissionEx.MixProject do
         Guides: ~r/docs\/.*/
       ],
       source_ref: "v0.1.0",
-      source_url: "https://github.com/devaction-labs/permission_ex"
+      source_url: "https://github.com/devaction-labs/permit_ex"
     ]
   end
 end

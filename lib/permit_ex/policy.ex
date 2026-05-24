@@ -1,4 +1,4 @@
-defmodule PermissionEx.Policy do
+defmodule PermitEx.Policy do
   @moduledoc """
   Behaviour for optional resource-level policy checks.
 

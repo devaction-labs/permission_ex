@@ -1,15 +1,15 @@
-defmodule PermissionEx do
+defmodule PermitEx do
   @moduledoc """
   Role and permission management for Ecto and Phoenix applications.
 
-  `PermissionEx` keeps the core authorization model intentionally small:
+  `PermitEx` keeps the core authorization model intentionally small:
   users receive roles globally or inside an optional context, roles receive
   permissions, and permissions are checked against the current scope.
   """
 
   import Ecto.Query
 
-  alias PermissionEx.{Config, Permission, Role, RolePermission, UserRole}
+  alias PermitEx.{Config, Permission, Role, RolePermission, UserRole}
 
   @type permission :: String.t() | atom()
   @type role :: Role.t() | Ecto.UUID.t() | String.t()
@@ -63,7 +63,7 @@ defmodule PermissionEx do
   Checks a permission and an optional resource policy.
 
   Pass a policy module with `:policy`. The policy module must implement
-  `c:PermissionEx.Policy.authorize/3`.
+  `c:PermitEx.Policy.authorize/3`.
   """
   def allowed?(scope, permission, resource \\ nil, opts \\ []) do
     with true <- can?(scope, permission),
@@ -188,7 +188,7 @@ defmodule PermissionEx do
   Replaces all permissions assigned to a role.
 
   Accepts a role struct, role id, or role name. Permissions can be names, ids,
-  atoms, or `%PermissionEx.Permission{}` structs. Missing permissions return
+  atoms, or `%PermitEx.Permission{}` structs. Missing permissions return
   `{:error, {:permissions_not_found, missing}}` unless `allow_missing?: true`
   is passed.
   """
@@ -387,8 +387,8 @@ defmodule PermissionEx do
   receives the same name, description, locked flag, and permissions. Existing
   context roles are updated idempotently.
 
-      PermissionEx.clone_roles_to_context(workspace.id)
-      PermissionEx.clone_roles_to_context(workspace.id, roles: ["admin", "viewer"])
+      PermitEx.clone_roles_to_context(workspace.id)
+      PermitEx.clone_roles_to_context(workspace.id, roles: ["admin", "viewer"])
   """
   def clone_roles_to_context(context_id, opts \\ []) when is_binary(context_id) do
     repo = repo(opts)
@@ -422,7 +422,7 @@ defmodule PermissionEx do
 
   Expected shape:
 
-      PermissionEx.seed!(
+      PermitEx.seed!(
         permissions: [
           {"orders:view", "View orders"},
           {"orders:manage", "Manage orders"}

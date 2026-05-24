@@ -1,19 +1,19 @@
-defmodule PermissionEx.DbCase do
+defmodule PermitEx.DbCase do
   use ExUnit.CaseTemplate
 
   using do
     quote do
       import Ecto.Query
 
-      alias PermissionEx.TestRepo
+      alias PermitEx.TestRepo
     end
   end
 
   setup tags do
-    :ok = Ecto.Adapters.SQL.Sandbox.checkout(PermissionEx.TestRepo)
+    :ok = Ecto.Adapters.SQL.Sandbox.checkout(PermitEx.TestRepo)
 
     unless tags[:async] do
-      Ecto.Adapters.SQL.Sandbox.mode(PermissionEx.TestRepo, {:shared, self()})
+      Ecto.Adapters.SQL.Sandbox.mode(PermitEx.TestRepo, {:shared, self()})
     end
 
     :ok

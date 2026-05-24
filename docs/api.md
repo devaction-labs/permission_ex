@@ -1,15 +1,15 @@
 # API Guide
 
-PermissionEx can protect JSON APIs through Plug.
+PermitEx can protect JSON APIs through Plug.
 
 ## Scope Setup
 
-Your authentication plug should assign a scope before PermissionEx guards run:
+Your authentication plug should assign a scope before PermitEx guards run:
 
 ```elixir
 def call(conn, _opts) do
   user = load_user_from_token(conn)
-  scope = PermissionEx.Scope.for_user(user)
+  scope = PermitEx.Scope.for_user(user)
 
   assign(conn, :current_scope, scope)
 end
@@ -19,7 +19,7 @@ For scoped SaaS APIs:
 
 ```elixir
 workspace = load_workspace(conn)
-scope = PermissionEx.Scope.for_user(user, workspace)
+scope = PermitEx.Scope.for_user(user, workspace)
 
 assign(conn, :current_scope, scope)
 ```
@@ -32,7 +32,7 @@ pipeline :api_auth do
 end
 
 pipeline :orders_write do
-  plug PermissionEx.Plug.RequirePermission, "orders:manage"
+  plug PermitEx.Plug.RequirePermission, "orders:manage"
 end
 
 scope "/api", MyAppWeb do
@@ -55,7 +55,7 @@ with status `403`.
 Customize the response:
 
 ```elixir
-plug PermissionEx.Plug.RequireAuthorization,
+plug PermitEx.Plug.RequireAuthorization,
   permission: "orders:manage",
   status: 403,
   body: ~s({"code":"forbidden","message":"Missing permission"}),
@@ -65,7 +65,7 @@ plug PermissionEx.Plug.RequireAuthorization,
 ## Role Checks
 
 ```elixir
-plug PermissionEx.Plug.RequireRole, "admin"
+plug PermitEx.Plug.RequireRole, "admin"
 ```
 
 ## Multiple Checks
@@ -73,21 +73,21 @@ plug PermissionEx.Plug.RequireRole, "admin"
 Require all permissions:
 
 ```elixir
-plug PermissionEx.Plug.RequireAuthorization,
+plug PermitEx.Plug.RequireAuthorization,
   all_permissions: ["orders:view", "orders:manage"]
 ```
 
 Require any permission:
 
 ```elixir
-plug PermissionEx.Plug.RequireAuthorization,
+plug PermitEx.Plug.RequireAuthorization,
   any_permissions: ["orders:manage", "settings:manage"]
 ```
 
 Combine roles and permissions:
 
 ```elixir
-plug PermissionEx.Plug.RequireAuthorization,
+plug PermitEx.Plug.RequireAuthorization,
   role: "admin",
   permission: "orders:manage"
 ```
@@ -95,16 +95,16 @@ plug PermissionEx.Plug.RequireAuthorization,
 ## Resource Policies
 
 RBAC checks whether the scope has a permission. If an endpoint also needs
-resource-level authorization, use `PermissionEx.allowed?/4` with a policy:
+resource-level authorization, use `PermitEx.allowed?/4` with a policy:
 
 ```elixir
 defmodule MyApp.OrderPolicy do
-  @behaviour PermissionEx.Policy
+  @behaviour PermitEx.Policy
 
   def authorize(scope, order, _opts) do
     scope.context_id == order.workspace_id
   end
 end
 
-PermissionEx.allowed?(scope, "orders:manage", order, policy: MyApp.OrderPolicy)
+PermitEx.allowed?(scope, "orders:manage", order, policy: MyApp.OrderPolicy)
 ```

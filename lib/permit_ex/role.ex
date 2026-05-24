@@ -1,4 +1,4 @@
-defmodule PermissionEx.Role do
+defmodule PermitEx.Role do
   @moduledoc """
   Ecto schema for global and context-specific roles.
 
@@ -25,15 +25,15 @@ defmodule PermissionEx.Role do
           updated_at: DateTime.t() | nil
         }
 
-  schema "permission_ex_roles" do
+  schema "permit_ex_roles" do
     field(:name, :string)
     field(:description, :string)
     field(:context_id, Ecto.UUID)
     field(:locked, :boolean, default: false)
 
-    has_many(:role_permissions, PermissionEx.RolePermission)
+    has_many(:role_permissions, PermitEx.RolePermission)
     has_many(:permissions, through: [:role_permissions, :permission])
-    has_many(:user_roles, PermissionEx.UserRole)
+    has_many(:user_roles, PermitEx.UserRole)
 
     timestamps()
   end
@@ -44,7 +44,7 @@ defmodule PermissionEx.Role do
     |> validate_required([:name])
     |> validate_format(:name, ~r/\A[a-z0-9_]+\z/, message: "must use slug format")
     |> validate_length(:name, max: 80)
-    |> unique_constraint(:name, name: :permission_ex_roles_global_name_index)
-    |> unique_constraint([:name, :context_id], name: :permission_ex_roles_context_name_index)
+    |> unique_constraint(:name, name: :permit_ex_roles_global_name_index)
+    |> unique_constraint([:name, :context_id], name: :permit_ex_roles_context_name_index)
   end
 end

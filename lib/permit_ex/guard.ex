@@ -1,4 +1,4 @@
-defmodule PermissionEx.Guard do
+defmodule PermitEx.Guard do
   @moduledoc """
   Shared authorization checks used by Plug and LiveView adapters.
   """
@@ -28,7 +28,7 @@ defmodule PermissionEx.Guard do
   end
 
   def authorized?(scope, permission) when is_binary(permission) or is_atom(permission) do
-    PermissionEx.can?(scope, permission)
+    PermitEx.can?(scope, permission)
   end
 
   defp all_values(opts, single_key, many_key) do
@@ -40,16 +40,16 @@ defmodule PermissionEx.Guard do
   defp all_permissions?(_scope, []), do: true
 
   defp all_permissions?(scope, permissions),
-    do: Enum.all?(permissions, &PermissionEx.can?(scope, &1))
+    do: Enum.all?(permissions, &PermitEx.can?(scope, &1))
 
   defp any_permissions?(_scope, []), do: true
 
   defp any_permissions?(scope, permissions),
-    do: Enum.any?(permissions, &PermissionEx.can?(scope, &1))
+    do: Enum.any?(permissions, &PermitEx.can?(scope, &1))
 
   defp all_roles?(_scope, []), do: true
-  defp all_roles?(scope, roles), do: Enum.all?(roles, &PermissionEx.has_role?(scope, &1))
+  defp all_roles?(scope, roles), do: Enum.all?(roles, &PermitEx.has_role?(scope, &1))
 
   defp any_roles?(_scope, []), do: true
-  defp any_roles?(scope, roles), do: Enum.any?(roles, &PermissionEx.has_role?(scope, &1))
+  defp any_roles?(scope, roles), do: Enum.any?(roles, &PermitEx.has_role?(scope, &1))
 end

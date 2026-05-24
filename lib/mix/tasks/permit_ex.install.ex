@@ -1,13 +1,13 @@
-defmodule Mix.Tasks.PermissionEx.Install do
+defmodule Mix.Tasks.PermitEx.Install do
   @moduledoc """
-  Installs PermissionEx migrations into the host application.
+  Installs PermitEx migrations into the host application.
 
-      mix permission_ex.install
+      mix permit_ex.install
   """
 
   use Mix.Task
 
-  @shortdoc "Copies PermissionEx migrations"
+  @shortdoc "Copies PermitEx migrations"
 
   @impl Mix.Task
   def run(_args) do
@@ -17,14 +17,14 @@ defmodule Mix.Tasks.PermissionEx.Install do
     File.mkdir_p!(target_dir)
 
     timestamp = timestamp()
-    filename = "#{timestamp}_create_permission_ex_tables.exs"
+    filename = "#{timestamp}_create_permit_ex_tables.exs"
     target = Path.join(target_dir, filename)
 
     if File.exists?(target) do
       Mix.shell().info("Migration already exists: #{target}")
     else
       template = template_path()
-      module = "CreatePermissionExTables"
+      module = "CreatePermitExTables"
       contents = template |> File.read!() |> EEx.eval_string(module: module)
       File.write!(target, contents)
       Mix.shell().info("Created #{target}")
@@ -32,10 +32,10 @@ defmodule Mix.Tasks.PermissionEx.Install do
   end
 
   defp template_path do
-    :permission_ex
+    :permit_ex
     |> :code.priv_dir()
     |> to_string()
-    |> Path.join("templates/create_permission_ex_tables.exs")
+    |> Path.join("templates/create_permit_ex_tables.exs")
   end
 
   defp timestamp do
