@@ -25,7 +25,9 @@ defmodule PermissionEx.MixProject do
   # Run "mix help deps" to learn about dependencies.
   defp deps do
     [
-      {:ecto_sql, "~> 3.13"}
+      {:ecto_sql, "~> 3.13"},
+      {:plug, "~> 1.18", optional: true},
+      {:phoenix_live_view, "~> 1.0", optional: true}
     ]
   end
 

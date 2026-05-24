@@ -109,6 +109,22 @@ PermissionEx.has_role?(scope, "admin")
 PermissionEx.authorize(scope, "settings:manage")
 ```
 
+Require permissions in APIs or controllers:
+
+```elixir
+plug PermissionEx.Plug.RequireAuthorization, permission: "orders:manage"
+```
+
+Require permissions in LiveView:
+
+```elixir
+live_session :app,
+  on_mount: [
+    {PermissionEx.LiveView.RequireAuthorization,
+     permission: "orders:view", redirect_to: "/"}
+  ]
+```
+
 ## Naming
 
 Permission names should use `resource:action` strings:

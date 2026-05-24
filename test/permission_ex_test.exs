@@ -37,4 +37,20 @@ defmodule PermissionExTest do
       assert PermissionEx.normalize_role(:admin) == "admin"
     end
   end
+
+  describe "guard checks" do
+    test "supports role and permission combinations" do
+      scope = %{roles: ["admin"], permissions: MapSet.new(["orders:view", "orders:manage"])}
+
+      assert PermissionEx.Guard.authorized?(scope,
+               role: "admin",
+               all_permissions: ["orders:view", "orders:manage"]
+             )
+
+      refute PermissionEx.Guard.authorized?(scope,
+               role: "admin",
+               all_permissions: ["settings:manage"]
+             )
+    end
+  end
 end
