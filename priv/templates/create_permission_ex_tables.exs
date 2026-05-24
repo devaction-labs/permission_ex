@@ -48,7 +48,7 @@ defmodule <%= module %> do
     create index(:permission_ex_role_permissions, [:permission_id])
 
     create table(:permission_ex_user_roles, primary_key: false) do
-      add :user_id, :uuid, null: false, primary_key: true
+      add :user_id, :uuid, null: false
       add :context_id, :uuid
 
       add :role_id, references(:permission_ex_roles, type: :uuid, on_delete: :delete_all),

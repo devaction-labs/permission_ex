@@ -1,6 +1,14 @@
 defmodule PermissionExTest do
   use ExUnit.Case, async: true
 
+  import Plug.Test
+
+  defmodule OwnerPolicy do
+    @behaviour PermissionEx.Policy
+
+    def authorize(scope, resource, _opts), do: scope.user_id == resource.owner_id
+  end
+
   describe "can?/2" do
     test "checks map scopes with MapSet permissions" do
       scope = %{permissions: MapSet.new(["orders:view", "orders:manage"])}
@@ -51,6 +59,62 @@ defmodule PermissionExTest do
                role: "admin",
                all_permissions: ["settings:manage"]
              )
+    end
+  end
+
+  describe "allowed?/4" do
+    test "combines RBAC and resource policy checks" do
+      scope = %{user_id: "user-1", permissions: ["orders:manage"]}
+
+      assert PermissionEx.allowed?(scope, "orders:manage", %{owner_id: "user-1"},
+               policy: OwnerPolicy
+             )
+
+      refute PermissionEx.allowed?(scope, "orders:manage", %{owner_id: "user-2"},
+               policy: OwnerPolicy
+             )
+    end
+  end
+
+  describe "Plug guards" do
+    test "allows authorized connections" do
+      conn =
+        :get
+        |> conn("/")
+        |> Plug.Conn.assign(:current_scope, %{permissions: ["orders:manage"]})
+
+      result = PermissionEx.Plug.RequirePermission.call(conn, permission: "orders:manage")
+
+      refute result.halted
+    end
+
+    test "halts unauthorized connections" do
+      conn =
+        :get
+        |> conn("/")
+        |> Plug.Conn.assign(:current_scope, %{permissions: []})
+
+      result = PermissionEx.Plug.RequirePermission.call(conn, permission: "orders:manage")
+
+      assert result.halted
+      assert result.status == 403
+      assert result.resp_body == ~s({"error":"forbidden"})
+    end
+  end
+
+  describe "LiveView guards" do
+    test "continues authorized sockets" do
+      socket = %Phoenix.LiveView.Socket{assigns: %{current_scope: %{roles: ["admin"]}}}
+
+      assert {:cont, ^socket} =
+               PermissionEx.LiveView.RequireRole.on_mount("admin", %{}, %{}, socket)
+    end
+
+    test "halts unauthorized sockets" do
+      socket = %Phoenix.LiveView.Socket{assigns: %{current_scope: %{roles: []}}}
+
+      assert {:halt, ^socket} =
+               PermissionEx.LiveView.RequireRole.on_mount("admin", %{}, %{}, socket)
     end
   end
 end

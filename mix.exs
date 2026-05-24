@@ -6,6 +6,7 @@ defmodule PermissionEx.MixProject do
       app: :permission_ex,
       version: "0.1.0",
       elixir: "~> 1.19",
+      elixirc_paths: elixirc_paths(Mix.env()),
       description: description(),
       package: package(),
       source_url: "https://github.com/devaction-labs/permission_ex",
@@ -28,11 +29,15 @@ defmodule PermissionEx.MixProject do
   defp deps do
     [
       {:ecto_sql, "~> 3.13"},
+      {:postgrex, ">= 0.0.0", only: :test},
       {:plug, "~> 1.18", optional: true},
       {:phoenix_live_view, "~> 1.0", optional: true},
       {:ex_doc, "~> 0.38", only: :dev, runtime: false}
     ]
   end
+
+  defp elixirc_paths(:test), do: ["lib", "test/support"]
+  defp elixirc_paths(_env), do: ["lib"]
 
   defp description do
     "Role and permission management for Ecto and Phoenix applications."
@@ -55,6 +60,7 @@ defmodule PermissionEx.MixProject do
         "LICENSE",
         "docs/phoenix.md",
         "docs/api.md",
+        "docs/testing.md",
         "docs/use-nexus.md"
       ],
       groups_for_extras: [
