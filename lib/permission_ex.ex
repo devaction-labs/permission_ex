@@ -290,6 +290,43 @@ defmodule PermissionEx do
   end
 
   @doc """
+  Clones global role templates into a context.
+
+  A global role is any role with `context_id == nil`. The cloned context role
+  receives the same name, description, locked flag, and permissions. Existing
+  context roles are updated idempotently.
+
+      PermissionEx.clone_roles_to_context(workspace.id)
+      PermissionEx.clone_roles_to_context(workspace.id, roles: ["admin", "viewer"])
+  """
+  def clone_roles_to_context(context_id, opts \\ []) when is_binary(context_id) do
+    repo = repo(opts)
+    role_names = Keyword.get(opts, :roles)
+
+    repo.transaction(fn ->
+      list_global_role_templates(repo, role_names)
+      |> Enum.map(fn role ->
+        permission_names = permission_names_for_role(role.id, repo)
+
+        {:ok, context_role} =
+          upsert_context_role(
+            role.name,
+            context_id,
+            %{description: role.description, locked: role.locked},
+            repo: repo
+          )
+
+        {:ok, _role} = sync_role_permissions(context_role, permission_names, repo: repo)
+        context_role
+      end)
+    end)
+  end
+
+  @doc "Alias for `clone_roles_to_context/2`."
+  def sync_context_roles_from_templates(context_id, opts \\ []),
+    do: clone_roles_to_context(context_id, opts)
+
+  @doc """
   Seeds permissions and roles in one transaction.
 
   Expected shape:
@@ -462,6 +499,32 @@ defmodule PermissionEx do
     |> limit(1)
     |> select([r], r.id)
     |> repo.one()
+  end
+
+  defp list_global_role_templates(repo, nil) do
+    Role
+    |> where([r], is_nil(r.context_id))
+    |> order_by([r], asc: r.name)
+    |> repo.all()
+  end
+
+  defp list_global_role_templates(repo, role_names) when is_list(role_names) do
+    normalized_names = Enum.map(role_names, &normalize_role/1)
+
+    Role
+    |> where([r], is_nil(r.context_id) and r.name in ^normalized_names)
+    |> order_by([r], asc: r.name)
+    |> repo.all()
+  end
+
+  defp permission_names_for_role(role_id, repo) do
+    from(rp in RolePermission,
+      join: p in Permission,
+      on: p.id == rp.permission_id,
+      where: rp.role_id == ^role_id,
+      select: p.name
+    )
+    |> repo.all()
   end
 
   defp resolved_or_missing(ids, [], _reason, _allow_missing?),

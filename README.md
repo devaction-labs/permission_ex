@@ -92,6 +92,12 @@ Sync all roles for a user in a context:
 {:ok, _count} = PermissionEx.sync_roles(user.id, ["admin", "billing"], context.id)
 ```
 
+Clone global role templates into a context:
+
+```elixir
+{:ok, roles} = PermissionEx.clone_roles_to_context(context.id)
+```
+
 Load permissions into your Phoenix scope:
 
 ```elixir
