@@ -152,7 +152,7 @@ screens and exposed through APIs without creating atoms at runtime.
 ## Roadmap
 
 - Phoenix Plug and LiveView `on_mount` guards.
-- Tenant role cloning from global templates.
+- Context role cloning from global templates.
 - Cache and invalidation hooks for long-lived LiveViews.
 - Policy callbacks for resource-level checks.
 - Igniter installer.
