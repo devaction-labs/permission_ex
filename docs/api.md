@@ -91,3 +91,20 @@ plug PermissionEx.Plug.RequireAuthorization,
   role: "admin",
   permission: "orders:manage"
 ```
+
+## Resource Policies
+
+RBAC checks whether the scope has a permission. If an endpoint also needs
+resource-level authorization, use `PermissionEx.allowed?/4` with a policy:
+
+```elixir
+defmodule MyApp.OrderPolicy do
+  @behaviour PermissionEx.Policy
+
+  def authorize(scope, order, _opts) do
+    scope.context_id == order.workspace_id
+  end
+end
+
+PermissionEx.allowed?(scope, "orders:manage", order, policy: MyApp.OrderPolicy)
+```

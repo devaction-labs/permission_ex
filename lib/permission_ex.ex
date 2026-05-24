@@ -59,6 +59,21 @@ defmodule PermissionEx do
     if can?(scope_or_permissions, permission), do: :ok, else: {:error, :unauthorized}
   end
 
+  @doc """
+  Checks a permission and an optional resource policy.
+
+  Pass a policy module with `:policy`. The policy module must implement
+  `c:PermissionEx.Policy.authorize/3`.
+  """
+  def allowed?(scope, permission, resource \\ nil, opts \\ []) do
+    with true <- can?(scope, permission),
+         :ok <- authorize_policy(scope, resource, Keyword.get(opts, :policy)) do
+      true
+    else
+      _ -> false
+    end
+  end
+
   @doc "Creates a permission."
   def create_permission(attrs, opts \\ []) do
     repo(opts).insert(Permission.changeset(%Permission{}, stringify_keys(attrs)))
@@ -109,6 +124,16 @@ defmodule PermissionEx do
     repo(opts).all(from(p in Permission, order_by: p.name))
   end
 
+  @doc "Gets a permission by name."
+  def get_permission_by_name(name, opts \\ []) when is_binary(name) do
+    repo(opts).get_by(Permission, name: name)
+  end
+
+  @doc "Deletes a permission."
+  def delete_permission(%Permission{} = permission, opts \\ []) do
+    repo(opts).delete(permission)
+  end
+
   @doc "Lists global roles and roles for the given context."
   def list_roles(context_id \\ nil, opts \\ []) do
     Role
@@ -116,6 +141,47 @@ defmodule PermissionEx do
     |> order_by([r], asc: r.name)
     |> preload([:role_permissions])
     |> repo(opts).all()
+  end
+
+  @doc "Gets a global or context-specific role by name."
+  def get_role_by_name(name, context_id \\ nil, opts \\ []) when is_binary(name) do
+    repo = repo(opts)
+
+    case find_role_id({:name, name, name}, repo, context_id) do
+      nil -> nil
+      role_id -> repo.get(Role, role_id)
+    end
+  end
+
+  @doc "Lists roles that belong to one context."
+  def roles_for_context(context_id, opts \\ []) when is_binary(context_id) do
+    Role
+    |> where([r], r.context_id == ^context_id)
+    |> order_by([r], asc: r.name)
+    |> repo(opts).all()
+  end
+
+  @doc "Deletes a role."
+  def delete_role(%Role{} = role, opts \\ []) do
+    repo(opts).delete(role)
+  end
+
+  @doc "Lists permissions assigned to a role."
+  def list_role_permissions(role_ref, opts \\ []) do
+    repo = repo(opts)
+
+    with %Role{} = role <- get_role(role_ref, repo, context_from_opts(opts)) do
+      from(rp in RolePermission,
+        join: p in Permission,
+        on: p.id == rp.permission_id,
+        where: rp.role_id == ^role.id,
+        order_by: p.name,
+        select: p
+      )
+      |> repo.all()
+    else
+      nil -> []
+    end
   end
 
   @doc """
@@ -271,6 +337,31 @@ defmodule PermissionEx do
       select: r
     )
     |> scope_user_roles(context_id)
+    |> repo(opts).all()
+  end
+
+  @doc "Lists user ids assigned to a role."
+  def users_with_role(role_ref, context_id \\ nil, opts \\ []) do
+    repo = repo(opts)
+
+    with %Role{} = role <- get_role(role_ref, repo, context_id) do
+      UserRole
+      |> where([ur], ur.role_id == ^role.id)
+      |> scope_user_roles(context_id)
+      |> order_by([ur], asc: ur.user_id)
+      |> select([ur], ur.user_id)
+      |> repo.all()
+    else
+      nil -> []
+    end
+  end
+
+  @doc "Lists role assignments for a user."
+  def list_user_roles(user_id, context_id \\ nil, opts \\ []) do
+    UserRole
+    |> where([ur], ur.user_id == ^user_id)
+    |> scope_user_roles(context_id)
+    |> order_by([ur], asc: ur.role_id)
     |> repo(opts).all()
   end
 
@@ -525,6 +616,17 @@ defmodule PermissionEx do
       select: p.name
     )
     |> repo.all()
+  end
+
+  defp authorize_policy(_scope, _resource, nil), do: :ok
+
+  defp authorize_policy(scope, resource, policy) when is_atom(policy) do
+    case policy.authorize(scope, resource, []) do
+      :ok -> :ok
+      true -> :ok
+      false -> {:error, :unauthorized}
+      {:error, _reason} = error -> error
+    end
   end
 
   defp resolved_or_missing(ids, [], _reason, _allow_missing?),

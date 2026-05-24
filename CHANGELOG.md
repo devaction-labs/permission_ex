@@ -17,3 +17,6 @@ Initial public release.
 - Optional LiveView `on_mount` guards.
 - Context role cloning from global templates.
 - Documentation for Phoenix, API, and `use_nexus` migration.
+- PostgreSQL-backed integration tests and CI workflow.
+- Administrative lookup/listing APIs.
+- Optional resource policy hook.
