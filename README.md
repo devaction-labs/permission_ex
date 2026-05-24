@@ -119,6 +119,8 @@ Require permissions in APIs or controllers:
 
 ```elixir
 plug PermissionEx.Plug.RequireAuthorization, permission: "orders:manage"
+plug PermissionEx.Plug.RequirePermission, "orders:manage"
+plug PermissionEx.Plug.RequireRole, "admin"
 ```
 
 Require permissions in LiveView:
@@ -129,6 +131,9 @@ live_session :app,
     {PermissionEx.LiveView.RequireAuthorization,
      permission: "orders:view", redirect_to: "/"}
   ]
+
+on_mount {PermissionEx.LiveView.RequirePermission, "orders:view"}
+on_mount {PermissionEx.LiveView.RequireRole, "admin"}
 ```
 
 ## Naming
