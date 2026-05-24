@@ -67,7 +67,7 @@ defmodule <%= module %> do
              name: :permit_ex_user_roles_context_role_index
            )
 
-    create index(:permit_ex_user_roles, [:role_id])
+    create index(:permit_ex_user_roles, [:role_id, :context_id])
     create index(:permit_ex_user_roles, [:context_id])
   end
 end
