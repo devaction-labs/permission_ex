@@ -15,6 +15,16 @@ defmodule PermissionEx.Role do
   @foreign_key_type Ecto.UUID
   @timestamps_opts [type: :utc_datetime_usec]
 
+  @type t :: %__MODULE__{
+          id: Ecto.UUID.t() | nil,
+          name: String.t() | nil,
+          description: String.t() | nil,
+          context_id: Ecto.UUID.t() | nil,
+          locked: boolean(),
+          inserted_at: DateTime.t() | nil,
+          updated_at: DateTime.t() | nil
+        }
+
   schema "permission_ex_roles" do
     field(:name, :string)
     field(:description, :string)

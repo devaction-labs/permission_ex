@@ -2,18 +2,77 @@
 
 Role and permission management for Ecto and Phoenix applications.
 
-PermissionEx is intentionally close to Laravel Spatie Permission: permissions live
-in the database, roles collect permissions, users receive roles inside a
-context, and your app checks permissions from the current scope.
+PermissionEx is a small RBAC toolkit inspired by Laravel Spatie Permission:
+permissions live in the database, roles collect permissions, users receive
+roles globally or inside an optional context, and your application checks the
+current scope.
 
-Contexts are optional. In a regular app, assign roles globally without passing a
-context. In a SaaS app, pass your tenant, workspace, organization, project, or
-account id as the context.
+Use it for:
+
+- Ecto applications that need database-backed roles and permissions.
+- Phoenix controllers and JSON APIs.
+- Phoenix LiveView routes and events.
+- SaaS applications with tenants, workspaces, organizations, projects, or accounts.
+- Regular applications without tenants.
 
 ## Status
 
-Early extraction. The public API is small on purpose while the Ecto model and
-Phoenix integration settle.
+`0.1.0` is the first public release. The core API is usable, but you should test
+it in your app before relying on it in production. The migration is part of the
+public contract, so review the table names and indexes before publishing or
+installing it in an existing system.
+
+## Concepts
+
+### Permission
+
+A permission is a string such as:
+
+```text
+orders:view
+orders:manage
+settings:manage
+```
+
+PermissionEx stores permissions as strings instead of atoms so they can be
+seeded, edited in admin screens, and exposed through APIs without creating atoms
+at runtime.
+
+### Role
+
+A role groups permissions:
+
+```elixir
+PermissionEx.seed!(
+  permissions: [
+    {"orders:view", "View orders"},
+    {"orders:manage", "Create, edit, and delete orders"}
+  ],
+  roles: [
+    {"admin", "Administrator", ["orders:view", "orders:manage"]},
+    {"viewer", "Read-only user", ["orders:view"]}
+  ]
+)
+```
+
+### Context
+
+Contexts are optional.
+
+In a regular app, assign roles globally:
+
+```elixir
+{:ok, role} = PermissionEx.upsert_role("admin")
+{:ok, _user_role} = PermissionEx.assign_role(user.id, role)
+```
+
+In a SaaS app, pass your tenant, workspace, organization, project, or account id
+as the context:
+
+```elixir
+{:ok, role} = PermissionEx.upsert_context_role("admin", workspace.id)
+{:ok, _user_role} = PermissionEx.assign_role(user.id, role, workspace.id)
+```
 
 ## Installation
 
@@ -33,104 +92,51 @@ Configure your repo:
 config :permission_ex, repo: MyApp.Repo
 ```
 
-Install the migration:
+Install and run the migration:
 
 ```bash
 mix permission_ex.install
 mix ecto.migrate
 ```
 
-The installer publishes a migration with these tables:
+The installer copies a migration with these tables:
 
 - `permission_ex_permissions`
 - `permission_ex_roles`
 - `permission_ex_role_permissions`
 - `permission_ex_user_roles`
 
-## Usage
+## Quick Start
 
-Seed permissions and global role templates:
+Seed global permissions and role templates:
 
 ```elixir
 PermissionEx.seed!(
   permissions: [
     {"orders:view", "View orders"},
-    {"orders:manage", "Create, edit and delete orders"},
-    {"settings:manage", "Manage workspace settings"}
+    {"orders:manage", "Create, edit, and delete orders"},
+    {"settings:manage", "Manage settings"}
   ],
   roles: [
-    {"admin", "Workspace administrator", ["orders:view", "orders:manage", "settings:manage"]},
+    {"admin", "Administrator", ["orders:view", "orders:manage", "settings:manage"]},
     {"viewer", "Read-only user", ["orders:view"]}
   ]
 )
 ```
 
-Assign a role to a user inside a context:
-
-```elixir
-{:ok, role} = PermissionEx.upsert_role("admin", %{description: "Workspace admin"})
-{:ok, _user_role} = PermissionEx.assign_role(user.id, role, context.id)
-```
-
-Assign a role globally in an app without tenants/workspaces:
-
-```elixir
-{:ok, role} = PermissionEx.upsert_role("admin")
-{:ok, _user_role} = PermissionEx.assign_role(user.id, role)
-```
-
-Create context-specific roles when you want each context to customize
-permissions independently:
-
-```elixir
-{:ok, role} = PermissionEx.upsert_context_role("admin", context.id)
-```
-
-Sync all permissions for a role:
-
-```elixir
-{:ok, _role} =
-  PermissionEx.sync_permissions(role, [
-    "orders:view",
-    "orders:manage",
-    "settings:manage"
-  ])
-```
-
-Sync all roles for a user in a context:
-
-```elixir
-{:ok, _count} = PermissionEx.sync_roles(user.id, ["admin", "billing"], context.id)
-```
-
-Sync global roles for a user:
+Assign roles:
 
 ```elixir
 {:ok, _count} = PermissionEx.sync_roles(user.id, ["admin"])
 ```
 
-Clone global role templates into a context:
+Load a scope:
 
 ```elixir
-{:ok, roles} = PermissionEx.clone_roles_to_context(context.id)
+scope = PermissionEx.Scope.for_user(user)
 ```
 
-Load permissions into your Phoenix scope:
-
-```elixir
-permission_scope = PermissionEx.Scope.for_user(user, context)
-
-%MyApp.Accounts.Scope{user: user, context: context}
-|> PermissionEx.Scope.put_permission_data(user, context)
-```
-
-For apps without contexts:
-
-```elixir
-permission_scope = PermissionEx.Scope.for_user(user)
-```
-
-Check permissions:
+Check permissions and roles:
 
 ```elixir
 PermissionEx.can?(scope, "orders:manage")
@@ -138,44 +144,102 @@ PermissionEx.has_role?(scope, "admin")
 PermissionEx.authorize(scope, "settings:manage")
 ```
 
-Require permissions in APIs or controllers:
+## Context-Specific Roles
+
+Clone global role templates into a context:
 
 ```elixir
-plug PermissionEx.Plug.RequireAuthorization, permission: "orders:manage"
+{:ok, roles} = PermissionEx.clone_roles_to_context(workspace.id)
+```
+
+Then assign roles inside that context:
+
+```elixir
+{:ok, _count} = PermissionEx.sync_roles(user.id, ["admin"], workspace.id)
+scope = PermissionEx.Scope.for_user(user, workspace)
+```
+
+When a role name exists globally and inside the context, PermissionEx resolves
+the context-specific role first.
+
+## Sync APIs
+
+Replace all permissions for a role:
+
+```elixir
+{:ok, _role} =
+  PermissionEx.sync_permissions(role, [
+    "orders:view",
+    "orders:manage"
+  ])
+```
+
+Replace all roles for a user:
+
+```elixir
+{:ok, _count} = PermissionEx.sync_roles(user.id, ["admin", "billing"], workspace.id)
+```
+
+Add or remove roles without replacing the full set:
+
+```elixir
+{:ok, _user_role} = PermissionEx.assign_role(user.id, "viewer", workspace.id)
+{:ok, _count} = PermissionEx.assign_roles(user.id, ["viewer", "support"], workspace.id)
+{:ok, _count} = PermissionEx.revoke_role(user.id, "viewer", workspace.id)
+```
+
+By default, sync APIs return an error for missing names:
+
+```elixir
+{:error, {:roles_not_found, ["missing_role"]}}
+{:error, {:permissions_not_found, ["orders:delete"]}}
+```
+
+Pass `allow_missing?: true` only for intentionally partial imports.
+
+## Phoenix and APIs
+
+PermissionEx includes optional Plug and LiveView adapters. They are compiled
+only when the corresponding dependency is available.
+
+For controllers or JSON APIs:
+
+```elixir
 plug PermissionEx.Plug.RequirePermission, "orders:manage"
 plug PermissionEx.Plug.RequireRole, "admin"
 ```
 
-Require permissions in LiveView:
+For LiveView:
 
 ```elixir
-live_session :app,
-  on_mount: [
-    {PermissionEx.LiveView.RequireAuthorization,
-     permission: "orders:view", redirect_to: "/"}
-  ]
-
 on_mount {PermissionEx.LiveView.RequirePermission, "orders:view"}
 on_mount {PermissionEx.LiveView.RequireRole, "admin"}
 ```
 
-## Naming
+More examples:
 
-Permission names should use `resource:action` strings:
+- [Phoenix Guide](docs/phoenix.md)
+- [API Guide](docs/api.md)
+- [use_nexus Migration Notes](docs/use-nexus.md)
 
-```text
-orders:view
-orders:manage
-settings:manage
+## Publishing
+
+Before publishing:
+
+```bash
+mix format --check-formatted
+mix compile --warnings-as-errors
+mix test
+mix docs
+mix hex.build
 ```
 
-Strings are used instead of atoms so permissions can be seeded, edited in admin
-screens and exposed through APIs without creating atoms at runtime.
+Publish with:
 
-## Roadmap
+```bash
+mix hex.publish
+```
 
-- Phoenix Plug and LiveView `on_mount` guards.
-- Context role cloning from global templates.
-- Cache and invalidation hooks for long-lived LiveViews.
-- Policy callbacks for resource-level checks.
-- Igniter installer.
+## License
+
+MIT. See [LICENSE](LICENSE).
