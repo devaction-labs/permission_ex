@@ -220,6 +220,7 @@ More examples:
 
 - [Phoenix Guide](docs/phoenix.md)
 - [API Guide](docs/api.md)
+- [Testing Guide](docs/testing.md)
 - [use_nexus Migration Notes](docs/use-nexus.md)
 
 ## Publishing
