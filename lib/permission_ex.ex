@@ -3,7 +3,7 @@ defmodule PermissionEx do
   Role and permission management for Ecto and Phoenix applications.
 
   `PermissionEx` keeps the core authorization model intentionally small:
-  users receive roles in a tenant/workspace, roles receive permissions, and
+  users receive roles in a context, roles receive permissions, and
   permissions are checked against the current scope.
   """
 
@@ -75,7 +75,7 @@ defmodule PermissionEx do
     )
   end
 
-  @doc "Creates a global role or a tenant role when `tenant_id` is present."
+  @doc "Creates a global role or a context role when `context_id` is present."
   def create_role(attrs, opts \\ []) do
     repo(opts).insert(Role.changeset(%Role{}, stringify_keys(attrs)))
   end
@@ -87,19 +87,20 @@ defmodule PermissionEx do
     repo(opts).insert(
       Role.changeset(%Role{}, attrs),
       on_conflict: {:replace, [:description, :locked, :updated_at]},
-      conflict_target: {:unsafe_fragment, "(name) WHERE tenant_id IS NULL"}
+      conflict_target: {:unsafe_fragment, "(name) WHERE context_id IS NULL"}
     )
   end
 
-  @doc "Creates or updates a tenant/workspace role by name."
-  def upsert_tenant_role(name, tenant_id, attrs \\ %{}, opts \\ [])
-      when is_binary(name) and is_binary(tenant_id) do
-    attrs = attrs |> stringify_keys() |> Map.put("name", name) |> Map.put("tenant_id", tenant_id)
+  @doc "Creates or updates a context role by name."
+  def upsert_context_role(name, context_id, attrs \\ %{}, opts \\ [])
+      when is_binary(name) and is_binary(context_id) do
+    attrs =
+      attrs |> stringify_keys() |> Map.put("name", name) |> Map.put("context_id", context_id)
 
     repo(opts).insert(
       Role.changeset(%Role{}, attrs),
       on_conflict: {:replace, [:description, :locked, :updated_at]},
-      conflict_target: {:unsafe_fragment, "(tenant_id, name) WHERE tenant_id IS NOT NULL"}
+      conflict_target: {:unsafe_fragment, "(context_id, name) WHERE context_id IS NOT NULL"}
     )
   end
 
@@ -108,10 +109,10 @@ defmodule PermissionEx do
     repo(opts).all(from(p in Permission, order_by: p.name))
   end
 
-  @doc "Lists global roles and roles for the given tenant."
-  def list_roles(tenant_id \\ nil, opts \\ []) do
+  @doc "Lists global roles and roles for the given context."
+  def list_roles(context_id \\ nil, opts \\ []) do
     Role
-    |> where([r], is_nil(r.tenant_id) or r.tenant_id == ^tenant_id)
+    |> scope_roles(context_id)
     |> order_by([r], asc: r.name)
     |> preload([:role_permissions])
     |> repo(opts).all()
@@ -128,7 +129,7 @@ defmodule PermissionEx do
   def sync_role_permissions(role_ref, permissions, opts \\ []) when is_list(permissions) do
     repo = repo(opts)
 
-    with %Role{} = role <- get_role(role_ref, repo, Keyword.get(opts, :tenant_id)) do
+    with %Role{} = role <- get_role(role_ref, repo, context_from_opts(opts)) do
       case resolve_permission_ids(permissions, repo, opts) do
         {:ok, permission_ids} ->
           repo.transaction(fn ->
@@ -159,17 +160,17 @@ defmodule PermissionEx do
   def sync_permissions(role_ref, permissions, opts \\ []),
     do: sync_role_permissions(role_ref, permissions, opts)
 
-  @doc "Assigns one role to a user in a tenant/workspace."
-  def assign_role(user_id, role_or_id, tenant_id, opts \\ []) do
+  @doc "Assigns one role to a user in a context."
+  def assign_role(user_id, role_or_id, context_id \\ nil, opts \\ []) do
     repo = repo(opts)
 
-    case resolve_role_ids([role_or_id], tenant_id, repo, opts) do
+    case resolve_role_ids([role_or_id], context_id, repo, opts) do
       {:ok, [role_id]} ->
         %UserRole{}
-        |> UserRole.changeset(%{user_id: user_id, role_id: role_id, tenant_id: tenant_id})
+        |> UserRole.changeset(%{user_id: user_id, role_id: role_id, context_id: context_id})
         |> repo.insert(
           on_conflict: :nothing,
-          conflict_target: [:user_id, :tenant_id, :role_id]
+          conflict_target: user_role_conflict_target(context_id)
         )
 
       {:error, {:roles_not_found, _missing}} = error ->
@@ -178,20 +179,20 @@ defmodule PermissionEx do
   end
 
   @doc "Assigns many roles to a user without removing existing roles."
-  def assign_roles(user_id, roles, tenant_id, opts \\ []) when is_list(roles) do
+  def assign_roles(user_id, roles, context_id \\ nil, opts \\ []) when is_list(roles) do
     repo = repo(opts)
 
-    case resolve_role_ids(roles, tenant_id, repo, opts) do
+    case resolve_role_ids(roles, context_id, repo, opts) do
       {:ok, role_ids} ->
         entries =
           Enum.map(role_ids, fn role_id ->
-            %{user_id: user_id, tenant_id: tenant_id, role_id: role_id, inserted_at: now()}
+            %{user_id: user_id, context_id: context_id, role_id: role_id, inserted_at: now()}
           end)
 
         {count, _} =
           insert_all_if_any(repo, UserRole, entries,
             on_conflict: :nothing,
-            conflict_target: [:user_id, :tenant_id, :role_id]
+            conflict_target: user_role_conflict_target(context_id)
           )
 
         {:ok, count}
@@ -201,19 +202,17 @@ defmodule PermissionEx do
     end
   end
 
-  @doc "Removes one role from a user in a tenant/workspace."
-  def revoke_role(user_id, role_or_id, tenant_id, opts \\ []) do
+  @doc "Removes one role from a user in a context."
+  def revoke_role(user_id, role_or_id, context_id \\ nil, opts \\ []) do
     repo = repo(opts)
 
-    case resolve_role_ids([role_or_id], tenant_id, repo, opts) do
+    case resolve_role_ids([role_or_id], context_id, repo, opts) do
       {:ok, [role_id]} ->
         {count, _} =
-          repo.delete_all(
-            from(ur in UserRole,
-              where:
-                ur.user_id == ^user_id and ur.tenant_id == ^tenant_id and ur.role_id == ^role_id
-            )
-          )
+          UserRole
+          |> where([ur], ur.user_id == ^user_id and ur.role_id == ^role_id)
+          |> scope_user_roles(context_id)
+          |> repo.delete_all()
 
         {:ok, count}
 
@@ -223,30 +222,31 @@ defmodule PermissionEx do
   end
 
   @doc """
-  Replaces all roles assigned to a user in a tenant/workspace.
+  Replaces all roles assigned to a user in a context.
 
   This is the Spatie-style `syncRoles` equivalent. It accepts role structs, ids
   or names and leaves the user with exactly the resolved roles.
   """
-  def sync_user_roles(user_id, roles, tenant_id, opts \\ []) when is_list(roles) do
+  def sync_user_roles(user_id, roles, context_id \\ nil, opts \\ []) when is_list(roles) do
     repo = repo(opts)
 
-    case resolve_role_ids(roles, tenant_id, repo, opts) do
+    case resolve_role_ids(roles, context_id, repo, opts) do
       {:ok, role_ids} ->
         repo.transaction(fn ->
-          repo.delete_all(
-            from(ur in UserRole, where: ur.user_id == ^user_id and ur.tenant_id == ^tenant_id)
-          )
+          UserRole
+          |> where([ur], ur.user_id == ^user_id)
+          |> scope_user_roles(context_id)
+          |> repo.delete_all()
 
           entries =
             Enum.map(role_ids, fn role_id ->
-              %{user_id: user_id, tenant_id: tenant_id, role_id: role_id, inserted_at: now()}
+              %{user_id: user_id, context_id: context_id, role_id: role_id, inserted_at: now()}
             end)
 
           {count, _} =
             insert_all_if_any(repo, UserRole, entries,
               on_conflict: :nothing,
-              conflict_target: [:user_id, :tenant_id, :role_id]
+              conflict_target: user_role_conflict_target(context_id)
             )
 
           count
@@ -258,31 +258,33 @@ defmodule PermissionEx do
   end
 
   @doc "Alias for `sync_user_roles/4`."
-  def sync_roles(user_id, roles, tenant_id, opts \\ []),
-    do: sync_user_roles(user_id, roles, tenant_id, opts)
+  def sync_roles(user_id, roles, context_id \\ nil, opts \\ []),
+    do: sync_user_roles(user_id, roles, context_id, opts)
 
-  @doc "Loads roles assigned to a user in a tenant/workspace."
-  def roles_for(user_id, tenant_id, opts \\ []) do
+  @doc "Loads roles assigned to a user in a context."
+  def roles_for(user_id, context_id \\ nil, opts \\ []) do
     from(ur in UserRole,
       join: r in Role,
       on: r.id == ur.role_id,
-      where: ur.user_id == ^user_id and ur.tenant_id == ^tenant_id,
+      where: ur.user_id == ^user_id,
       order_by: r.name,
       select: r
     )
+    |> scope_user_roles(context_id)
     |> repo(opts).all()
   end
 
-  @doc "Loads permission names for the user in a tenant/workspace."
-  def permissions_for(user_id, tenant_id, opts \\ []) do
+  @doc "Loads permission names for the user in a context."
+  def permissions_for(user_id, context_id \\ nil, opts \\ []) do
     from(ur in UserRole,
       join: rp in RolePermission,
       on: rp.role_id == ur.role_id,
       join: p in Permission,
       on: p.id == rp.permission_id,
-      where: ur.user_id == ^user_id and ur.tenant_id == ^tenant_id,
+      where: ur.user_id == ^user_id,
       select: p.name
     )
+    |> scope_user_roles(context_id)
     |> repo(opts).all()
     |> MapSet.new()
   end
@@ -298,7 +300,7 @@ defmodule PermissionEx do
           {"orders:manage", "Manage orders"}
         ],
         roles: [
-          {"admin", "Tenant admin", ["orders:view", "orders:manage"]},
+          {"admin", "Context admin", ["orders:view", "orders:manage"]},
           {"viewer", "Read-only user", ["orders:view"]}
         ]
       )
@@ -335,10 +337,32 @@ defmodule PermissionEx do
 
   defp repo(opts), do: Keyword.get(opts, :repo) || Config.repo!()
 
-  defp get_role(%Role{} = role, _repo, _tenant_id), do: role
+  defp context_from_opts(opts), do: Keyword.get(opts, :context_id, Keyword.get(opts, :tenant_id))
 
-  defp get_role(role_ref, repo, tenant_id) when is_binary(role_ref) do
-    case resolve_role_ids([role_ref], tenant_id, repo, []) do
+  defp scope_roles(query, nil), do: where(query, [r], is_nil(r.context_id))
+
+  defp scope_roles(query, context_id) do
+    where(query, [r], is_nil(r.context_id) or r.context_id == ^context_id)
+  end
+
+  defp scope_user_roles(query, nil), do: where(query, [ur], is_nil(ur.context_id))
+
+  defp scope_user_roles(query, context_id) do
+    where(query, [ur], ur.context_id == ^context_id)
+  end
+
+  defp user_role_conflict_target(nil) do
+    {:unsafe_fragment, "(user_id, role_id) WHERE context_id IS NULL"}
+  end
+
+  defp user_role_conflict_target(_context_id) do
+    {:unsafe_fragment, "(user_id, context_id, role_id) WHERE context_id IS NOT NULL"}
+  end
+
+  defp get_role(%Role{} = role, _repo, _context_id), do: role
+
+  defp get_role(role_ref, repo, context_id) when is_binary(role_ref) do
+    case resolve_role_ids([role_ref], context_id, repo, []) do
       {:ok, [role_id]} -> repo.get(Role, role_id)
       {:error, _reason} -> nil
     end
@@ -350,10 +374,10 @@ defmodule PermissionEx do
     |> resolve_permission_lookups(repo, Keyword.get(opts, :allow_missing?, false))
   end
 
-  defp resolve_role_ids(roles, tenant_id, repo, opts) do
+  defp resolve_role_ids(roles, context_id, repo, opts) do
     roles
     |> Enum.map(&role_lookup/1)
-    |> resolve_role_lookups(repo, tenant_id, Keyword.get(opts, :allow_missing?, false))
+    |> resolve_role_lookups(repo, context_id, Keyword.get(opts, :allow_missing?, false))
   end
 
   defp permission_lookup(%Permission{id: id}), do: {:id, id, id}
@@ -391,10 +415,10 @@ defmodule PermissionEx do
     resolved_or_missing(ids, missing, :permissions_not_found, allow_missing?)
   end
 
-  defp resolve_role_lookups(lookups, repo, tenant_id, allow_missing?) do
+  defp resolve_role_lookups(lookups, repo, context_id, allow_missing?) do
     {ids, missing} =
       Enum.reduce(lookups, {[], []}, fn lookup, {ids, missing} ->
-        case find_role_id(lookup, repo, tenant_id) do
+        case find_role_id(lookup, repo, context_id) do
           nil -> {ids, [lookup_label(lookup) | missing]}
           id -> {[id | ids], missing}
         end
@@ -417,7 +441,7 @@ defmodule PermissionEx do
     |> repo.one()
   end
 
-  defp find_role_id({:id, id, _label}, repo, _tenant_id) do
+  defp find_role_id({:id, id, _label}, repo, _context_id) do
     Role
     |> where([r], r.id == ^id)
     |> select([r], r.id)
@@ -426,15 +450,15 @@ defmodule PermissionEx do
 
   defp find_role_id({:name, name, _label}, repo, nil) do
     Role
-    |> where([r], r.name == ^name and is_nil(r.tenant_id))
+    |> where([r], r.name == ^name and is_nil(r.context_id))
     |> select([r], r.id)
     |> repo.one()
   end
 
-  defp find_role_id({:name, name, _label}, repo, tenant_id) do
+  defp find_role_id({:name, name, _label}, repo, context_id) do
     Role
-    |> where([r], r.name == ^name and (r.tenant_id == ^tenant_id or is_nil(r.tenant_id)))
-    |> order_by([r], asc: is_nil(r.tenant_id))
+    |> where([r], r.name == ^name and (r.context_id == ^context_id or is_nil(r.context_id)))
+    |> order_by([r], asc: is_nil(r.context_id))
     |> limit(1)
     |> select([r], r.id)
     |> repo.one()

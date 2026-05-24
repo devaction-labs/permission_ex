@@ -30,4 +30,11 @@ defmodule PermissionExTest do
       refute PermissionEx.has_role?(scope, "viewer")
     end
   end
+
+  describe "normalize helpers" do
+    test "normalizes permission and role inputs" do
+      assert PermissionEx.normalize_permission(:orders_manage) == "orders_manage"
+      assert PermissionEx.normalize_role(:admin) == "admin"
+    end
+  end
 end

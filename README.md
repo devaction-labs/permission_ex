@@ -4,7 +4,7 @@ Role and permission management for Ecto and Phoenix applications.
 
 PermissionEx is intentionally close to Laravel Spatie Permission: permissions live
 in the database, roles collect permissions, users receive roles inside a
-tenant/workspace, and your app checks permissions from the current scope.
+context, and your app checks permissions from the current scope.
 
 ## Status
 
@@ -61,18 +61,18 @@ PermissionEx.seed!(
 )
 ```
 
-Assign a role to a user inside a tenant/workspace:
+Assign a role to a user inside a context:
 
 ```elixir
 {:ok, role} = PermissionEx.upsert_role("admin", %{description: "Workspace admin"})
-{:ok, _user_role} = PermissionEx.assign_role(user.id, role, tenant.id)
+{:ok, _user_role} = PermissionEx.assign_role(user.id, role, context.id)
 ```
 
-Create tenant/workspace-specific roles when you want each tenant to customize
+Create context-specific roles when you want each context to customize
 permissions independently:
 
 ```elixir
-{:ok, role} = PermissionEx.upsert_tenant_role("admin", tenant.id)
+{:ok, role} = PermissionEx.upsert_context_role("admin", context.id)
 ```
 
 Sync all permissions for a role:
@@ -86,24 +86,19 @@ Sync all permissions for a role:
   ])
 ```
 
-Sync all roles for a user in a tenant/workspace:
+Sync all roles for a user in a context:
 
 ```elixir
-{:ok, _count} = PermissionEx.sync_roles(user.id, ["admin", "billing"], tenant.id)
+{:ok, _count} = PermissionEx.sync_roles(user.id, ["admin", "billing"], context.id)
 ```
 
 Load permissions into your Phoenix scope:
 
 ```elixir
-permissions = PermissionEx.permissions_for(user.id, tenant.id)
-roles = PermissionEx.roles_for(user.id, tenant.id)
+permission_scope = PermissionEx.Scope.for_user(user, context)
 
-%MyApp.Accounts.Scope{
-  user: user,
-  tenant: tenant,
-  roles: roles,
-  permissions: permissions
-}
+%MyApp.Accounts.Scope{user: user, context: context}
+|> PermissionEx.Scope.put_permission_data(user, context)
 ```
 
 Check permissions:

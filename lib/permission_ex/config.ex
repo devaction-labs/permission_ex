@@ -11,8 +11,8 @@ defmodule PermissionEx.Config do
     repo() || raise ArgumentError, "configure :permission_ex, repo: MyApp.Repo"
   end
 
-  def tenant_key do
-    Application.get_env(@app, :tenant_key, :tenant_id)
+  def context_key do
+    Application.get_env(@app, :context_key, :context_id)
   end
 
   def user_key do

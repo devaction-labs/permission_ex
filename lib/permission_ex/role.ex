@@ -1,9 +1,10 @@
 defmodule PermissionEx.Role do
   @moduledoc """
-  Ecto schema for system and tenant roles.
+  Ecto schema for global and context-specific roles.
 
-  Roles with `tenant_id == nil` are global templates. Roles with `tenant_id`
-  belong to one tenant/workspace and can be customized independently.
+  Roles with `context_id == nil` are global templates. Roles with `context_id`
+  belong to one application-defined context, such as a tenant, workspace,
+  project, organization, or account.
   """
 
   use Ecto.Schema
@@ -17,7 +18,7 @@ defmodule PermissionEx.Role do
   schema "permission_ex_roles" do
     field(:name, :string)
     field(:description, :string)
-    field(:tenant_id, Ecto.UUID)
+    field(:context_id, Ecto.UUID)
     field(:locked, :boolean, default: false)
 
     has_many(:role_permissions, PermissionEx.RolePermission)
@@ -29,11 +30,11 @@ defmodule PermissionEx.Role do
 
   def changeset(role, attrs) do
     role
-    |> cast(attrs, [:name, :description, :tenant_id, :locked])
+    |> cast(attrs, [:name, :description, :context_id, :locked])
     |> validate_required([:name])
     |> validate_format(:name, ~r/\A[a-z0-9_]+\z/, message: "must use slug format")
     |> validate_length(:name, max: 80)
     |> unique_constraint(:name, name: :permission_ex_roles_global_name_index)
-    |> unique_constraint([:name, :tenant_id], name: :permission_ex_roles_tenant_name_index)
+    |> unique_constraint([:name, :context_id], name: :permission_ex_roles_context_name_index)
   end
 end

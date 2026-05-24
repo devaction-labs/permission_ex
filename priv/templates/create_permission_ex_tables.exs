@@ -16,20 +16,20 @@ defmodule <%= module %> do
       add :id, :uuid, primary_key: true
       add :name, :string, null: false
       add :description, :text
-      add :tenant_id, :uuid
+      add :context_id, :uuid
       add :locked, :boolean, null: false, default: false
 
       timestamps(type: :utc_datetime_usec)
     end
 
     create unique_index(:permission_ex_roles, [:name],
-             where: "tenant_id IS NULL",
+             where: "context_id IS NULL",
              name: :permission_ex_roles_global_name_index
            )
 
-    create unique_index(:permission_ex_roles, [:tenant_id, :name],
-             where: "tenant_id IS NOT NULL",
-             name: :permission_ex_roles_tenant_name_index
+    create unique_index(:permission_ex_roles, [:context_id, :name],
+             where: "context_id IS NOT NULL",
+             name: :permission_ex_roles_context_name_index
            )
 
     create table(:permission_ex_role_permissions, primary_key: false) do
@@ -49,17 +49,25 @@ defmodule <%= module %> do
 
     create table(:permission_ex_user_roles, primary_key: false) do
       add :user_id, :uuid, null: false, primary_key: true
-      add :tenant_id, :uuid, null: false, primary_key: true
+      add :context_id, :uuid
 
       add :role_id, references(:permission_ex_roles, type: :uuid, on_delete: :delete_all),
-        null: false,
-        primary_key: true
+        null: false
 
       timestamps(type: :utc_datetime_usec, updated_at: false)
     end
 
-    create unique_index(:permission_ex_user_roles, [:user_id, :tenant_id, :role_id])
+    create unique_index(:permission_ex_user_roles, [:user_id, :role_id],
+             where: "context_id IS NULL",
+             name: :permission_ex_user_roles_global_role_index
+           )
+
+    create unique_index(:permission_ex_user_roles, [:user_id, :context_id, :role_id],
+             where: "context_id IS NOT NULL",
+             name: :permission_ex_user_roles_context_role_index
+           )
+
     create index(:permission_ex_user_roles, [:role_id])
-    create index(:permission_ex_user_roles, [:tenant_id])
+    create index(:permission_ex_user_roles, [:context_id])
   end
 end
